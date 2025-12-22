@@ -10,10 +10,11 @@ public partial class CapooController : CharacterBody2D
 	private bool isDragging = false;
 	private bool isFalling = false;
 	private Vector2 dragOffset = Vector2.Zero;
-    //public float gravity = ProjectSettings.GetSetting("physics/2d/default_gravity").AsSingle(); --重复定义？
+	private CapooState _state; // 状态管理
 
     public override void _Ready()
 	{
+		_state = new CapooState(this);
 		DisplayServer.WindowSetMousePassthrough(new Vector2[] { new Vector2(-1, -1) });
 		Scale = scale;
 		Position = position;
@@ -70,6 +71,8 @@ public partial class CapooController : CharacterBody2D
 
 	public override void _Process(double delta)
 	{
+		_state.Update(delta); // 更新状态逻辑
+
 		if (Input.IsActionJustPressed("left_click") && isMouseOver)
 		{
 			isDragging = true;
@@ -154,9 +157,8 @@ public partial class CapooController : CharacterBody2D
 			fallingDelta += delta;
 			velocity.Y += gravity * (float)delta;
 
-			// 获取视口大小
 			float viewportHeight = GetViewportRect().Size.Y;
-			// 判断是否触底（允许一点点误差，比如 1.0 像素）
+			// 判断是否触底
 			bool isTouchingBottom = Position.Y >= (viewportHeight - 1.0f);
 
 			if (fallingDelta >= fallingTime || IsOnFloor() || isTouchingBottom) // Landing
@@ -169,9 +171,9 @@ public partial class CapooController : CharacterBody2D
 				capooView.AddAnimation($"idle_idle{Random.Shared.Next(0, 6)+1}");
 			}
 		}
-		
-		Velocity = velocity;
-		MoveAndSlide();
+
+        Velocity = velocity;
+        MoveAndSlide();
 		ClampPosition(true);
 	}
 
@@ -192,5 +194,46 @@ public partial class CapooController : CharacterBody2D
 			currentScale.X = Mathf.Abs(currentScale.X);
 		}
 		capooView.Scale = currentScale;
+	}
+
+	/* 内部状态类，用于管理待机时的表情变化 */
+	private class CapooState
+	{
+		private CapooController _controller;
+		private double state_timer; // 状态计时器 	
+		private double _nextChangeTime;
+
+		public CapooState(CapooController controller)
+		{
+			_controller = controller;
+			ResetTimer();
+		}
+
+		private void ResetTimer()
+		{
+			state_timer = 0;
+			_nextChangeTime = Random.Shared.Next(3, 8); // 3到8秒随机切换
+		}
+
+		public void Update(double delta)
+		{
+			// 如果正在被拖拽或下落，不进行待机表情切换
+			if (_controller.isDragging || _controller.isFalling)
+			{
+				ResetTimer();
+				return;
+			}
+
+			state_timer += delta;
+			if (state_timer >= _nextChangeTime)
+			{
+				ResetTimer();
+				// 随机播放一个 idle 动画
+				string[] types = { "idle_idle", "idle_full", "walk", "run", "wild", "roll" };
+				int[] counts = { 6, 2, 6, 9, 5, 5 };
+				int idx = Random.Shared.Next(types.Length);
+				_controller.capooView.SetAnimation($"{types[idx]}{Random.Shared.Next(1, counts[idx] + 1)}");
+			}
+		}
 	}
 }
