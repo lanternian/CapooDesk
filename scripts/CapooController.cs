@@ -3,25 +3,75 @@ using System;
 
 public partial class CapooController : CharacterBody2D
 {
-	public	Vector2 scale = new Vector2(0.796f, 0.796f);
-	public	Vector2 position = new Vector2(506, 306);
-	private CapooView capooView;
+	public	Vector2 scale = new Vector2(0.4f, 0.4f); // capoo缩放比例
+	public	Vector2 position = new Vector2(506, 306); // 初始位置
+	private CapooView capooView; // 角色 View
+	private int currentCapooId = 1;
 	private bool isMouseOver = false;
 	private bool isDragging = false;
 	private bool isFalling = false;
 	private Vector2 dragOffset = Vector2.Zero;
 	private CapooState _state; // 状态管理
 
+	public void ChangeCapoo(int id)
+	{
+		var config = GetNode<CapooConfig>("/root/CapooConfig");
+		if (config == null || config.infos == null) return;
+
+		// 循环切换逻辑：如果 ID 超出范围，则回到开头或结尾
+		if (id >= config.infos.Count) id = 0;
+		if (id < 0) id = config.infos.Count - 1;
+		
+		currentCapooId = id;
+
+		// 移除旧的 View
+		if (capooView != null)
+		{
+			capooView.QueueFree();
+			RemoveChild(capooView);
+		}
+
+		// 创建新的 View 并添加到场景
+		capooView = new CapooView(currentCapooId);
+		AddChild(capooView);
+
+		// 重新获取骨骼数据
+		SpineBone dragBone = capooView.GetSkeleton().FindBone("center");
+		if (dragBone != null)
+		{
+			dragOffset = new Vector2(dragBone.GetWorldX(), dragBone.GetWorldY()) * Scale;
+		}
+		
+		// 播放初始动画
+		capooView.SetAnimation($"idle_idle{Random.Shared.Next(0, 6)+1}");
+	}
+
     public override void _Ready()
 	{
 		_state = new CapooState(this);
-		DisplayServer.WindowSetMousePassthrough(new Vector2[] { new Vector2(-1, -1) });
+		DisplayServer.WindowSetMousePassthrough(new Vector2[] { new Vector2(-1, -1) }); 
 		Scale = scale;
 		Position = position;
 		InputPickable = true;
 
-		capooView = new CapooView(1);
-		AddChild(capooView);
+		ChangeCapoo(currentCapooId);
+
+		// 初始化 UI
+		// 由Controller直接创建
+		var existingUI = GetNodeOrNull<GameUI>("GameUI");
+		if (existingUI != null)
+		{
+			// 如果存在，直接连接信号
+			existingUI.ChangeCapooRequested += (id) => ChangeCapoo(id);
+		}
+		else
+		{
+			// 如果不存在，再动态创建
+			var gameUI = new GameUI();
+			gameUI.Name = "GameUI"; // 设置名字以便查找
+			AddChild(gameUI);
+			gameUI.ChangeCapooRequested += (id) => ChangeCapoo(id);
+		}
 
 		var talkPolygon = new CollisionPolygon2D();
 		talkPolygon.Name = "talk_collision";
@@ -64,9 +114,15 @@ public partial class CapooController : CharacterBody2D
 
         Connect("mouse_entered", Callable.From(() => { isMouseOver = true; }));
         Connect("mouse_exited", Callable.From(() => { isMouseOver = false; }));
+	}
 
-		SpineBone dragBone = capooView.GetSkeleton().FindBone("center");
-		dragOffset = new Vector2(dragBone.GetWorldX(), dragBone.GetWorldY()) * Scale;
+	public override void _Input(InputEvent @event)
+	{
+		// 键盘右键切换下一个
+		if (@event is InputEventKey keyEvent && keyEvent.Pressed && keyEvent.Keycode == Key.Right && !keyEvent.Echo)
+		{
+			ChangeCapoo(currentCapooId + 1);
+		}
 	}
 
 	public override void _Process(double delta)
@@ -102,11 +158,10 @@ public partial class CapooController : CharacterBody2D
 		Vector2 pos = Position;
 		Vector2 vel = Velocity;
 		
-		// Capoo 的大致尺寸 (基于 Scale 0.796)
-		// 宽度的一半：约 190 * 0.8 = 152
-		// 高度（从锚点向上）：约 285 * 0.8 = 228
-		float halfWidth = 152f;
-		float height = 228f;
+		// Capoo 的大致尺寸 (基于 Scale)
+		// 原始尺寸：宽度的一半约 190，高度约 285
+		float halfWidth = 190f * Math.Abs(Scale.X);
+		float height = 285f * Math.Abs(Scale.Y);
 		
 		float bounceFactor = 0.6f; // 反弹系数
 

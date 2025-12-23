@@ -182,7 +182,7 @@ public partial class CapooView : SpineSprite
 			if (!string.IsNullOrEmpty(capooInfo.back_hierarchy)) back.ZIndex = int.Parse(capooInfo.back_hierarchy) -1;
         
 		if (!string.IsNullOrEmpty(capooInfo.right_hand_item))
-        	rightHandItem = AttachComponent("right_hand_item", "prop_r", $"res://assets/spine/prop/{capooInfo.right_hand_item}.res", capooInfo.right_hand_item_Anim);
+        	rightHandItem = AttachComponent("right_hand_item", "prop_r", $"res://assets/spine/prop_r/{capooInfo.right_hand_item}.res", capooInfo.right_hand_item_Anim);
 
 		if (!string.IsNullOrEmpty(capooInfo.capoo_acc_top))
         	accTop = AttachComponent("capoo_acc_top", "root", $"res://assets/spine/acc/{capooInfo.capoo_acc_top}.res", capooInfo.capoo_acc_top_Anim);

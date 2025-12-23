@@ -13,7 +13,7 @@ config_version=5
 config/name="capoo"
 run/main_scene="res://scenes/test.tscn"
 config/features=PackedStringArray("4.2", "C#", "GL Compatibility")
-boot_splash/show_image=false
+boot_splash/image="res://assets/images/avatar_capoo_guide_01.png"
 config/icon="res://icon.svg"
 
 [autoload]
@@ -23,6 +23,10 @@ CustomWin="*res://scripts/CustomWin.cs"
 
 [display]
 
+window/size/mode=3
+window/size/resizable=false
+window/size/borderless=true
+window/size/transparent=true
 window/per_pixel_transparency/allowed=true
 
 [dotnet]

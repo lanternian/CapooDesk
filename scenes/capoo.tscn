@@ -1,7 +1,7 @@
 [gd_scene load_steps=19 format=3 uid="uid://bh3ovxi6rvwat"]
 
 [ext_resource type="SpineSkeletonDataResource" uid="uid://bkfoo5ncelr6u" path="res://assets/spine/body/capoo_basic_001.res" id="1_a8a0l"]
-[ext_resource type="Script" path="res://scripts/CharacterBody2D.cs" id="1_upmb1"]
+[ext_resource type="Script" path="res://scripts/BaseCharacterBody2D.cs" id="1_upmb1"]
 [ext_resource type="SpineSkeletonDataResource" uid="uid://dsek7ngyl3xld" path="res://assets/spine/face/capoo_basic_face_001.res" id="2_7q4re"]
 [ext_resource type="SpineSkeletonDataResource" uid="uid://b1nus5hdl3x41" path="res://assets/spine/hat/capoo_hat_045.res" id="5_8mqsb"]
 [ext_resource type="SpineSkeletonDataResource" uid="uid://b3k1sxph6xfun" path="res://assets/spine/clothes/capoo_clothes_074.res" id="6_b1pah"]
