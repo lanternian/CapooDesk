@@ -30,7 +30,7 @@ public partial class CustomWin : Node2D
     public override void _Ready()
     {
         IntPtr hwnd = GetActiveWindow();
-        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        // SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         SetWindowLong(
             hwnd,
             GWL_EXSTYLE,
