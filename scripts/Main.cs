@@ -33,6 +33,8 @@ public partial class Main : Node2D
 			else if (arg == "--perftest") AddChild(new SelfTest { Name = "SelfTest", PerfMode = true });
 			else if (arg == "--windowtest") AddChild(new SelfTest { Name = "SelfTest", WindowMode = true });
 			else if (arg == "--loadtest") AddChild(new SelfTest { Name = "SelfTest", LoadMode = true });
+			else if (arg.StartsWith("--quit-after="))
+				GetTree().CreateTimer(arg.Substring("--quit-after=".Length).ToFloat()).Timeout += QuitApp;
 			else if (arg.StartsWith("--spawn="))
 			{
 				int count = arg.Substring("--spawn=".Length).ToInt();
