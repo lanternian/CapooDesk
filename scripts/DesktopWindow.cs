@@ -23,6 +23,9 @@ public partial class DesktopWindow : Node
 	public Vector2I Origin { get; private set; }
 	public Vector2I Size { get; private set; }
 	public TransparencyMode Mode { get; private set; }
+
+	/// <summary>Another CapooDesk is already running; this one quits without touching saved data.</summary>
+	public bool IsDuplicateInstance { get; private set; }
 	public Vector2 CursorWorld { get; private set; }
 	public bool IsClickThrough => clickThrough;
 
@@ -67,6 +70,7 @@ public partial class DesktopWindow : Node
 	{
 		if (!AcquireSingleInstance())
 		{
+			IsDuplicateInstance = true;
 			GD.Print("CapooDesk is already running.");
 			GetTree().Quit();
 			return;
@@ -284,7 +288,7 @@ public partial class DesktopWindow : Node
 	{
 		// Godot may have rewritten our extended style.
 		long ex = Win32.GetStyle(Hwnd, Win32.GWL_EXSTYLE);
-		if ((ex & Win32.WS_EX_TOOLWINDOW) == 0) ApplyStyles();
+		if ((ex & Win32.WS_EX_TOOLWINDOW) == 0) ApplyStyles(hideFromTaskbar: true);
 		else ApplyTopmost();
 
 		// Taskbar moved/resized or resolution changed.
@@ -303,7 +307,7 @@ public partial class DesktopWindow : Node
 		{
 			Mode = wantedMode;
 			ApplyTransparency();
-			ApplyStyles();
+			ApplyStyles(hideFromTaskbar: true);
 		}
 		if (data.ScreenIndex != -1 && data.ScreenIndex != screen) FitToScreen(data.ScreenIndex);
 	}

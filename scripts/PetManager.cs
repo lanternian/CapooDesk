@@ -46,7 +46,7 @@ public partial class PetManager : Node2D
 		DesktopWindow.Instance.AddHitTester(IsInteractiveAt);
 		DesktopWindow.Instance.ScreenChanged += OnScreenChanged;
 		AppSettings.Instance.Changed += OnSettingsChanged;
-		RestoreRoster();
+		if (!DesktopWindow.Instance.IsDuplicateInstance) RestoreRoster();
 	}
 
 	public override void _ExitTree()
@@ -136,7 +136,7 @@ public partial class PetManager : Node2D
 
 	public void SaveRoster()
 	{
-		if (AppSettings.Instance == null) return;
+		if (AppSettings.Instance == null || DesktopWindow.Instance == null || DesktopWindow.Instance.IsDuplicateInstance) return;
 		var roster = new List<PetSave>();
 		foreach (var pet in pets)
 		{

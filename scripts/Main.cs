@@ -32,6 +32,7 @@ public partial class Main : Node2D
 			else if (arg == "--selftest") AddChild(new SelfTest { Name = "SelfTest" });
 			else if (arg == "--perftest") AddChild(new SelfTest { Name = "SelfTest", PerfMode = true });
 			else if (arg == "--windowtest") AddChild(new SelfTest { Name = "SelfTest", WindowMode = true });
+			else if (arg == "--loadtest") AddChild(new SelfTest { Name = "SelfTest", LoadMode = true });
 			else if (arg.StartsWith("--spawn="))
 			{
 				int count = arg.Substring("--spawn=".Length).ToInt();

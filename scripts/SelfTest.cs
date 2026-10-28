@@ -23,12 +23,16 @@ public partial class SelfTest : Node
 	/// <summary>Window-awareness test against a window titled "CapooTestWindow".</summary>
 	public bool WindowMode;
 
+	/// <summary>Build every character once and check that all its parts load.</summary>
+	public bool LoadMode;
+
 	public override async void _Ready()
 	{
 		try
 		{
 			if (PerfMode) await RunPerf();
 			else if (WindowMode) await RunWindowTest();
+			else if (LoadMode) await RunLoadTest();
 			else await Run();
 		}
 		catch (Exception e)
@@ -328,6 +332,40 @@ public partial class SelfTest : Node
 		Check("Capoo falls when the window closes", pet.State.IsAirborne(), pet.State.ToString());
 		await WaitFor(() => pet.State == CapooState.Idle, 4);
 		Check("...and lands on the taskbar", Mathf.Abs(pet.GlobalPosition.Y - Window.Size.Y) < 3, pet.GlobalPosition.ToString());
+	}
+
+	private async Task RunLoadTest()
+	{
+		foreach (var p in Pets.Pets.ToArray())
+		{
+			Pets.RemovePet(p);
+			p.QueueFree();
+		}
+		var config = GetNode<CapooConfig>("/root/CapooConfig");
+		Check("126 characters configured", config.infos.Count == 126, config.infos.Count.ToString());
+		int broken = 0;
+		for (int i = 0; i < config.infos.Count; i++)
+		{
+			var view = new CapooView(i) { Position = new Vector2(200 + (i % 10) * 180, 300 + (i / 10 % 4) * 220) };
+			AddChild(view);
+			bool ok = view.SetAnimation("idle_idle1") && view.GetActionDuration("hit1") > 0;
+			if (!ok)
+			{
+				broken++;
+				GD.PrintErr($"[selftest] character {i} ({config.infos[i].id} {config.infos[i].name}) failed to animate");
+			}
+			if (i % 40 == 39)
+			{
+				await Wait(0.3);
+				await Capture($"characters_{i / 40}");
+			}
+			if (i % 10 == 9)
+			{
+				await Wait(0.05);
+				foreach (var child in GetChildren()) if (child is CapooView v) v.QueueFree();
+			}
+		}
+		Check("every character loads and animates", broken == 0, $"{broken} broken");
 	}
 
 	// ---- helpers ----
