@@ -68,6 +68,7 @@ public partial class CapooController : CharacterBody2D
 	private CollisionShape2D bodyCollision;
 	private Vector2[] pickPolygon = Array.Empty<Vector2>();
 	private double offFloorTime;
+	private int restTicks;
 
 	public CapooController()
 	{
@@ -177,6 +178,20 @@ public partial class CapooController : CharacterBody2D
 		Vector2 previous = GlobalPosition;
 		bool airborne = state.IsAirborne() || state == CapooState.Hop;
 
+		// Standing still: skip the full physics step and just make sure there's still
+		// ground below every few ticks (the window under it may have closed).
+		if (!airborne && !state.IsMoving() && offFloorTime == 0 && Velocity == Vector2.Zero)
+		{
+			if (++restTicks % 8 != 0) return;
+			if (TestMove(GlobalTransform, new Vector2(0, 3)))
+			{
+				ClampToWorld();
+				return;
+			}
+			offFloorTime = 0.001;
+		}
+		restTicks = 0;
+
 		Vector2 v = Velocity;
 		if (!airborne) v.X = state.IsMoving() ? moveDirection * moveSpeed : 0f;
 		v.Y = Mathf.Min(v.Y + Gravity * dt, MaxFallSpeed);
@@ -203,9 +218,14 @@ public partial class CapooController : CharacterBody2D
 		else
 		{
 			if (IsOnFloor())
+			{
 				offFloorTime = 0;
+				Velocity = Vector2.Zero;
+			}
 			else if ((offFloorTime += dt) > 0.1)
+			{
 				StartFalling();
+			}
 
 			if (state.IsMoving())
 			{

@@ -43,6 +43,7 @@ public partial class CapooController
 
 	private void EnterState(CapooState next)
 	{
+		if (next.IsAirborne() || next is CapooState.Hop) offFloorTime = 0;
 		state = next;
 		stateTime = 0;
 		phase = 0;

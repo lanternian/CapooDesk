@@ -36,6 +36,11 @@ public partial class DesktopWindow : Node
 	public bool IsLeftButtonDown => VirtualCursor.HasValue ? VirtualLeftDown : Win32.IsKeyDown(Win32.VK_LBUTTON);
 	public bool IsAnyButtonDown => VirtualCursor.HasValue ? VirtualLeftDown : Win32.IsAnyMouseButtonDown();
 
+	/// <summary>Something is moving fast or being handled (set by PetManager / UI every frame):
+	/// keeps the full frame rate while low-power mode is on.</summary>
+	public bool PetsBusy { get; set; }
+	public bool UiBusy { get; set; }
+
 	/// <summary>Keep the window hit-testable regardless of the cursor (e.g. while dragging a pet).</summary>
 	public bool ForceOpaque { get; set; }
 
@@ -99,6 +104,7 @@ public partial class DesktopWindow : Node
 			CursorWorld = new Vector2(p.X - Origin.X, p.Y - Origin.Y);
 		}
 		SetClickThrough(!IsInteractiveAt(CursorWorld));
+		ApplyFrameRate();
 
 		maintenanceTimer += delta;
 		if (maintenanceTimer >= 2.0)
@@ -229,9 +235,17 @@ public partial class DesktopWindow : Node
 			Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
 	}
 
+	/// <summary>Full rate while interacting; 30 fps when just idling (low-power mode);
+	/// almost nothing while hidden behind a fullscreen app.</summary>
 	private void ApplyFrameRate()
 	{
-		Engine.MaxFps = AppSettings.Instance.Data.MaxFps;
+		var data = AppSettings.Instance.Data;
+		int fps = data.MaxFps;
+		if (windowHidden)
+			fps = 5;
+		else if (data.LowPower && clickThrough && !ForceOpaque && !PetsBusy && !UiBusy)
+			fps = Math.Min(30, data.MaxFps);
+		if (Engine.MaxFps != fps) Engine.MaxFps = fps;
 	}
 
 	// ---- Click-through ----

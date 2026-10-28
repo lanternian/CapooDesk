@@ -256,6 +256,14 @@ public partial class PetManager : Node2D
 
 		UpdateStacks();
 
+		bool busy = pressedPet != null;
+		foreach (var pet in pets)
+		{
+			if (busy) break;
+			busy = pet.State.IsAirborne() || pet.State is CapooState.Dragged or CapooState.Hop or CapooState.Pet;
+		}
+		DesktopWindow.Instance.PetsBusy = busy;
+
 		scheduleTimer -= delta;
 		if (scheduleTimer <= 0)
 		{

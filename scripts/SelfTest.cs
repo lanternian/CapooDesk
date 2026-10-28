@@ -17,11 +17,15 @@ public partial class SelfTest : Node
 	private static DesktopWindow Window => DesktopWindow.Instance;
 	private static PetManager Pets => PetManager.Instance;
 
+	/// <summary>Run the frame-time benchmark instead of the interaction script.</summary>
+	public bool PerfMode;
+
 	public override async void _Ready()
 	{
 		try
 		{
-			await Run();
+			if (PerfMode) await RunPerf();
+			else await Run();
 		}
 		catch (Exception e)
 		{
@@ -164,6 +168,67 @@ public partial class SelfTest : Node
 		Pets.RecycleAll();
 		await Wait(1.5);
 		Check("recycle removes all", Pets.Pets.Count == 0, Pets.Pets.Count.ToString());
+	}
+
+	private async Task RunPerf()
+	{
+		Window.VirtualCursor = new Vector2(5, 5);
+		foreach (var p in Pets.Pets.ToArray())
+		{
+			Pets.RemovePet(p);
+			p.QueueFree();
+		}
+		AppSettings.Instance.Data.MaxPets = 50;
+		foreach (string variant in new[] { "normal", "no-physics", "no-spine", "neither" })
+		{
+			while (Pets.Pets.Count < 5) Pets.SpawnRandom();
+			await Wait(2.0);
+			foreach (var p in Pets.Pets)
+			{
+				p.SetPhysicsProcess(variant is "normal" or "no-spine");
+				p.View.ProcessMode = variant is "normal" or "no-physics" ? ProcessModeEnum.Inherit : ProcessModeEnum.Disabled;
+			}
+			await Wait(1.0);
+			var proc0 = System.Diagnostics.Process.GetCurrentProcess();
+			var cpu0 = proc0.TotalProcessorTime;
+			ulong wall0 = Time.GetTicksUsec();
+			await Wait(4.0);
+			proc0.Refresh();
+			double ms = (proc0.TotalProcessorTime - cpu0).TotalMilliseconds;
+			GD.Print($"[selftest] perf variant={variant} pets=5 cpu={ms / ((Time.GetTicksUsec() - wall0) / 1000.0) * 100:0}% of one core");
+		}
+		foreach (var p in Pets.Pets)
+		{
+			p.SetPhysicsProcess(true);
+			p.View.ProcessMode = ProcessModeEnum.Inherit;
+		}
+		foreach (int target in new[] { 0, 1, 5, 10, 20 })
+		{
+			if (target == 0)
+			{
+				foreach (var p in Pets.Pets.ToArray())
+				{
+					Pets.RemovePet(p);
+					p.QueueFree();
+				}
+			}
+			while (Pets.Pets.Count < target) Pets.SpawnRandom();
+			await Wait(3.0);
+			var proc = System.Diagnostics.Process.GetCurrentProcess();
+			var cpuStart = proc.TotalProcessorTime;
+			ulong wallStart = Time.GetTicksUsec();
+			double fps = 0;
+			for (int i = 0; i < 10; i++)
+			{
+				await Wait(0.4);
+				fps += Performance.GetMonitor(Performance.Monitor.TimeFps) / 10;
+			}
+			proc.Refresh();
+			double cpuMs = (proc.TotalProcessorTime - cpuStart).TotalMilliseconds;
+			double wallMs = (Time.GetTicksUsec() - wallStart) / 1000.0;
+			GD.Print($"[selftest] perf pets={target} fps={fps:0} cpu={cpuMs / wallMs * 100:0}% of one core ({cpuMs / wallMs * 100 / System.Environment.ProcessorCount:0.0}% total) cpu/frame={cpuMs / (wallMs / 1000 * fps):0.0}ms nodes={Performance.GetMonitor(Performance.Monitor.ObjectNodeCount):0} mem={OS.GetStaticMemoryUsage() / 1048576.0:0}MB");
+		}
+		passed++;
 	}
 
 	// ---- helpers ----

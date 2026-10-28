@@ -30,6 +30,7 @@ public partial class CapooView : SpineSprite
 
 	private string currentAction;
 	private float petScale = 0.5f;
+	private double appearTimer;
 
 	private SpineAnimationState bodyAnimationState, faceAnimationState, moodAnimationState;
 	private SpineAnimationState efxBotAnimationState, efxTopAnimationState, efxAppearAnimationState;
@@ -127,11 +128,21 @@ public partial class CapooView : SpineSprite
 		PlayOrHide(efxBotAnimationState, capooAction.effectBot, capooAction.effectBot_loop);
 		PlayOrHide(talkAnimationState, capooAction.talk, capooAction.talk_loop);
 		if (!string.IsNullOrEmpty(capooAction.appear))
+		{
 			efxAppearAnimationState.SetAnimation(capooAction.appear, capooAction.appear_loop, 0);
+			MarkLayer(efxAppearAnimationState, true);
+			appearTimer = GetAnimationDuration(efxAppear, capooAction.appear) + 0.1;
+		}
 		if (!string.IsNullOrEmpty(capooAction.food))
+		{
 			foodAnimationState.SetAnimation(capooAction.food, capooAction.food_loop, 0);
+			MarkLayer(foodAnimationState, true);
+		}
 		if (!string.IsNullOrEmpty(capooAction.poo))
+		{
 			pooAnimationState.SetAnimation(capooAction.poo, capooAction.poo_loop, 0);
+			MarkLayer(pooAnimationState, true);
+		}
 
 		currentAction = actionName;
 		return true;
@@ -162,19 +173,72 @@ public partial class CapooView : SpineSprite
 			pooAnimationState.AddAnimation(capooAction.poo, delay, capooAction.poo_loop, 0);
 	}
 
-	private static void PlayOrHide(SpineAnimationState state, string anim, bool loop)
+	private void PlayOrHide(SpineAnimationState state, string anim, bool loop)
 	{
 		if (string.IsNullOrEmpty(anim))
 			state.SetAnimation("hide_all", true, 0);
 		else
 			state.SetAnimation(anim, loop, 0);
+		MarkLayer(state, !string.IsNullOrEmpty(anim));
 	}
 
 	/// <summary>Plays a raw animation on one layer without touching the others.</summary>
 	public void SetLayer(Layer layer, string anim, bool loop = true)
 	{
 		var state = GetLayerState(layer);
-		state?.SetAnimation(string.IsNullOrEmpty(anim) ? "hide_all" : anim, loop, 0);
+		if (state == null) return;
+		bool show = !string.IsNullOrEmpty(anim) && anim != "hide_all";
+		state.SetAnimation(show ? anim : "hide_all", loop, 0);
+		MarkLayer(state, show);
+	}
+
+	// ---- Sleeping layers ----
+	// Overlay skeletons (bubble, food, poo, effects) spend most of their time on "hide_all".
+	// Once hidden they stop processing entirely and wake up when given an animation again.
+
+	private readonly Dictionary<SpineAnimationState, SpineSprite> overlaySprites = new Dictionary<SpineAnimationState, SpineSprite>();
+	private readonly Dictionary<SpineSprite, int> hideCountdown = new Dictionary<SpineSprite, int>();
+
+	private void RegisterOverlay(SpineSprite sprite, SpineAnimationState state)
+	{
+		overlaySprites[state] = sprite;
+		MarkLayer(state, false);
+	}
+
+	private void MarkLayer(SpineAnimationState state, bool active)
+	{
+		if (!overlaySprites.TryGetValue(state, out var sprite)) return;
+		if (active)
+		{
+			hideCountdown.Remove(sprite);
+			sprite.ProcessMode = ProcessModeEnum.Inherit;
+			sprite.Visible = true;
+		}
+		else if (sprite.ProcessMode != ProcessModeEnum.Disabled)
+		{
+			// Let "hide_all" apply for a couple of frames before freezing the sprite.
+			hideCountdown[sprite] = 2;
+		}
+	}
+
+	public override void _Process(double delta)
+	{
+		if (appearTimer > 0 && (appearTimer -= delta) <= 0)
+			SetLayer(Layer.Appear, "hide_all");
+
+		if (hideCountdown.Count == 0) return;
+		foreach (var sprite in new List<SpineSprite>(hideCountdown.Keys))
+		{
+			int left = hideCountdown[sprite] - 1;
+			if (left > 0)
+			{
+				hideCountdown[sprite] = left;
+				continue;
+			}
+			hideCountdown.Remove(sprite);
+			sprite.Visible = false;
+			sprite.ProcessMode = ProcessModeEnum.Disabled;
+		}
 	}
 
 	public void HideLayer(Layer layer) => SetLayer(layer, "hide_all");
@@ -257,6 +321,7 @@ public partial class CapooView : SpineSprite
 	{
 		ClearTrack();
 		SetEmptyAnimation();
+		foreach (var state in overlaySprites.Keys) MarkLayer(state, false);
 		currentAction = null;
 	}
 
@@ -366,7 +431,13 @@ public partial class CapooView : SpineSprite
 		SetPooSkin(poo, "poo_01");
 		#endregion
 
-		characterParts.Add(mood);
+		RegisterOverlay(mood, moodAnimationState);
+		RegisterOverlay(efxBot, efxBotAnimationState);
+		RegisterOverlay(efxTop, efxTopAnimationState);
+		RegisterOverlay(efxAppear, efxAppearAnimationState);
+		RegisterOverlay(talk, talkAnimationState);
+		RegisterOverlay(food, foodAnimationState);
+		RegisterOverlay(poo, pooAnimationState);
 		ClearAnimation();
 		SetFacing(FacingRight);
 	}

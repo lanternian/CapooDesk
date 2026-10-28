@@ -30,6 +30,7 @@ public partial class Main : Node2D
 		{
 			if (arg == "--debug-overlay") debug.Visible = true;
 			else if (arg == "--selftest") AddChild(new SelfTest { Name = "SelfTest" });
+			else if (arg == "--perftest") AddChild(new SelfTest { Name = "SelfTest", PerfMode = true });
 			else if (arg.StartsWith("--spawn="))
 			{
 				int count = arg.Substring("--spawn=".Length).ToInt();
