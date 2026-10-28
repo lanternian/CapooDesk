@@ -90,6 +90,7 @@ public class SettingsData
 	public int MaxFps = 60;
 	public bool LowPower = true;
 	public bool PetsHidden = false;
+	public float SoundVolume = 0.5f;           // 0 = muted
 
 	// Behaviour
 	public int CareLevel = 2;                  // 0 off, 1 low, 2 normal, 3 often
@@ -111,6 +112,7 @@ public class SettingsData
 		MaxPets = Math.Clamp(MaxPets, 1, 50);
 		MaxFps = Math.Clamp(MaxFps, 20, 144);
 		CareLevel = Math.Clamp(CareLevel, 0, 3);
+		SoundVolume = Mathf.Clamp(SoundVolume, 0f, 1f);
 		SleepIdleMinutes = Math.Clamp(SleepIdleMinutes, 1, 120);
 		NightStartHour = Math.Clamp(NightStartHour, 0, 23);
 		NightEndHour = Math.Clamp(NightEndHour, 0, 23);

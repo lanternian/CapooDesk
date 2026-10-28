@@ -216,6 +216,7 @@ public partial class MagicBook : CanvasLayer
 	{
 		petMenu.Close();
 		book.Visible = true;
+		Sfx.Play(Sfx.Sound.OpenBook);
 		ShowTab(currentTab);
 	}
 
@@ -249,7 +250,11 @@ public partial class MagicBook : CanvasLayer
 				TooltipText = tips[i],
 				MouseDefaultCursorShape = Control.CursorShape.PointingHand
 			};
-			tabs[i].Pressed += () => ShowTab(index);
+			tabs[i].Pressed += () =>
+			{
+				Sfx.Play(Sfx.Sound.Click);
+				ShowTab(index);
+			};
 			book.AddChild(tabs[i]);
 		}
 
@@ -306,7 +311,11 @@ public partial class MagicBook : CanvasLayer
 			Position = position,
 			MouseDefaultCursorShape = Control.CursorShape.PointingHand
 		};
-		arrow.Pressed += onPressed;
+		arrow.Pressed += () =>
+		{
+			Sfx.Play(Sfx.Sound.Click);
+			onPressed();
+		};
 		return arrow;
 	}
 
@@ -574,6 +583,7 @@ public partial class MagicBook : CanvasLayer
 		AddSlider(left, "咖波大小", 0.25, 1.0, 0.05, s => s.PetScale, (s, v) => s.PetScale = (float)v, v => $"{v * 100:0}%");
 		AddSlider(left, "最多几只", 1, 50, 1, s => s.MaxPets, (s, v) => s.MaxPets = (int)v, v => $"{v:0} 只");
 		AddChoice(left, "帧率上限", new[] { "30", "60" }, s => s.MaxFps > 30 ? 1 : 0, (s, i) => s.MaxFps = i == 0 ? 30 : 60);
+		AddSlider(left, "音效音量", 0, 1, 0.05, s => s.SoundVolume, (s, v) => s.SoundVolume = (float)v, v => v <= 0 ? "静音" : $"{v * 100:0}%");
 		AddCheck(left, "低功耗（没人理时降帧）", s => s.LowPower, (s, v) => s.LowPower = v);
 		AddCheck(left, "总在最前", s => s.AlwaysOnTop, (s, v) => s.AlwaysOnTop = v);
 		AddCheck(left, "显示书本按钮", s => s.ShowBookButton, (s, v) => s.ShowBookButton = v);

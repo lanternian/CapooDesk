@@ -44,6 +44,7 @@ public partial class CapooController
 	private void EnterState(CapooState next)
 	{
 		if (next.IsAirborne() || next is CapooState.Hop) offFloorTime = 0;
+		var previous = state;
 		state = next;
 		stateTime = 0;
 		phase = 0;
@@ -167,6 +168,23 @@ public partial class CapooController
 				stateDuration = 0.85;
 				break;
 		}
+
+		PlayStateSound(previous, next);
+	}
+
+	private static void PlayStateSound(CapooState previous, CapooState next)
+	{
+		switch (next)
+		{
+			case CapooState.Appear: Sfx.Play(Sfx.Sound.Summon); break;
+			case CapooState.Recycle: Sfx.Play(Sfx.Sound.Recycle); break;
+			case CapooState.Dragged: Sfx.Play(Sfx.Sound.Drag); break;
+			case CapooState.Roll: Sfx.Play(Sfx.Sound.Roll); break;
+			case CapooState.Air when previous is CapooState.Dragged or CapooState.Roll: Sfx.Play(Sfx.Sound.Fall); break;
+			case CapooState.Land: Sfx.Play(Sfx.Sound.Land); break;
+			case CapooState.Pet: Sfx.Play(Sfx.Sound.Touch); break;
+			case CapooState.PooRemoving: Sfx.Play(Sfx.Sound.CleanPoo); break;
+		}
 	}
 
 	private void UpdateState(double delta)
@@ -243,6 +261,7 @@ public partial class CapooController
 					stateTime = 0;
 					stateDuration = 1.5;
 					view.SetAnimation("pooRemoveAfter", force: true);
+					Sfx.Play(Sfx.Sound.Comfortable);
 				}
 				else
 				{
@@ -296,6 +315,7 @@ public partial class CapooController
 			case 0:
 				view.HideLayer(CapooView.Layer.Food);
 				view.SetAnimation("chew", force: true);
+				Sfx.Play(Sfx.Sound.Feed);
 				stateDuration = 1.6;
 				break;
 			case 1:
@@ -478,6 +498,7 @@ public partial class CapooController
 		AttachOnto(below);
 		FollowStack();
 		EnterState(CapooState.Stacked);
+		Sfx.Play(Sfx.Sound.Stack);
 		below.OnSomeoneLanded();
 	}
 
@@ -506,6 +527,7 @@ public partial class CapooController
 		if (state == CapooState.WaitCleanPoo) view.HideLayer(CapooView.Layer.Poo);
 		Dizzy(RandomFrom(CapooActionPools.Dizzy));
 		view.SetLayer(CapooView.Layer.EffectBot, "bump", false);
+		Sfx.Play(Sfx.Sound.Push);
 	}
 
 	public bool CanBeBumped =>

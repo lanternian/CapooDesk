@@ -16,12 +16,14 @@ config/use_custom_user_dir=true
 config/custom_user_dir_name="CapooDesk"
 config/features=PackedStringArray("4.2", "C#", "GL Compatibility")
 config/icon="res://icon.svg"
+config/windows_native_icon="res://assets/icons/capoo.ico"
 
 [autoload]
 
 CapooConfig="*res://scripts/CapooConfig.cs"
 AppSettings="*res://scripts/AppSettings.cs"
 DesktopWindow="*res://scripts/DesktopWindow.cs"
+Sfx="*res://scripts/Sfx.cs"
 
 [display]
 
