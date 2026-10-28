@@ -16,8 +16,10 @@ public partial class AppSettings : Node
 	public event Action Changed;
 
 	// "--test" on the command line keeps automated runs away from the real settings.
+	public static bool IsTestRun => System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--test") >= 0;
+
 	private static readonly string SettingsPath =
-		System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--test") >= 0 ? "user://settings_test.json" : "user://settings.json";
+		IsTestRun ? "user://settings_test.json" : "user://settings.json";
 
 	private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
 	{

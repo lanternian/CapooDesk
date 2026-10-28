@@ -28,6 +28,9 @@ public partial class SelfTest : Node
 
 	public override async void _Ready()
 	{
+		// Keep the overlay off the user's desktop; the viewport keeps rendering so the
+		// captures below still show what the pets are doing.
+		Window.SetTestHidden(true);
 		try
 		{
 			if (PerfMode) await RunPerf();

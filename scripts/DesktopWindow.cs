@@ -53,6 +53,7 @@ public partial class DesktopWindow : Node
 	private bool clickThrough;
 	private bool stylesApplied;
 	private bool autoHidden;
+	private bool testHidden;
 	private bool windowHidden;
 	private double maintenanceTimer;
 	private int screen;
@@ -138,10 +139,19 @@ public partial class DesktopWindow : Node
 		UpdateVisibility();
 	}
 
+	/// <summary>Self-test: hide the overlay so it does not cover the user's desktop.
+	/// The viewport keeps rendering (viewport captures still work) and the frame rate stays up,
+	/// unlike the automatic hide above which throttles to 5 fps.</summary>
+	public void SetTestHidden(bool hidden)
+	{
+		testHidden = hidden;
+		UpdateVisibility();
+	}
+
 	/// <summary>Apply the user's "hide Capoos" toggle from the settings.</summary>
 	public void UpdateVisibility()
 	{
-		bool hidden = autoHidden || AppSettings.Instance.Data.PetsHidden;
+		bool hidden = testHidden || autoHidden || AppSettings.Instance.Data.PetsHidden;
 		if (hidden == windowHidden) return;
 		windowHidden = hidden;
 		Win32.ShowWindow(Hwnd, hidden ? Win32.SW_HIDE : Win32.SW_SHOWNOACTIVATE);
@@ -152,7 +162,9 @@ public partial class DesktopWindow : Node
 
 	private static bool AcquireSingleInstance()
 	{
-		instanceMutex = new System.Threading.Mutex(true, "CapooDesk.SingleInstance", out bool createdNew);
+		// A test run must not be blocked by (or block) the real app: it gets its own lock.
+		string name = AppSettings.IsTestRun ? "CapooDesk.SingleInstance.Test" : "CapooDesk.SingleInstance";
+		instanceMutex = new System.Threading.Mutex(true, name, out bool createdNew);
 		return createdNew;
 	}
 
@@ -237,7 +249,7 @@ public partial class DesktopWindow : Node
 	{
 		var data = AppSettings.Instance.Data;
 		int fps = data.MaxFps;
-		if (windowHidden)
+		if (windowHidden && !testHidden)
 			fps = 5;
 		else if (data.LowPower && clickThrough && !ForceOpaque && !PetsBusy && !UiBusy)
 			fps = Math.Min(30, data.MaxFps);
