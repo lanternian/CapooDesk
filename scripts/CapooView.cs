@@ -2,104 +2,150 @@ using Godot;
 using System;
 using System.Collections.Generic;
 
+/// <summary>
+/// Spine rendering of one Capoo: the body skeleton plus up to 16 component skeletons
+/// (face, hat, back, props, effects, talk bubble, food, poo) pinned to body bones.
+/// Actions from Capoo_Action.json drive the animated layers together.
+/// </summary>
 public partial class CapooView : SpineSprite
 {
-    public int id = 0;
+	public enum Layer { Body, Face, Mood, EffectTop, EffectBot, Talk, Appear, Food, Poo }
+
+	public int id = 0;
+
+	public CapooInfo Info => capooInfo;
+	public string CurrentAction => currentAction;
+
+	/// <summary>The art faces left; mirrored when facing right.</summary>
+	public bool FacingRight => Scale.X < 0;
 
 	private CapooInfo capooInfo;
-	private List<CapooAction> capooActionList;
+	private CapooConfig config;
 
 	private SpineSprite face, faceDecoration, hat, clothes, back, rightHandItem;
 	private SpineSprite accTop, accBody, accBot;
-    private SpineSprite mood;
+	private SpineSprite mood;
 	private SpineSprite efxBot, efxTop, efxAppear;
-    private SpineSprite talk, food, poo;
+	private SpineSprite talk, food, poo;
 
 	private string currentAction;
+	private float petScale = 0.5f;
 
 	private SpineAnimationState bodyAnimationState, faceAnimationState, moodAnimationState;
 	private SpineAnimationState efxBotAnimationState, efxTopAnimationState, efxAppearAnimationState;
 	private SpineAnimationState talkAnimationState, foodAnimationState, pooAnimationState;
-	
+
+	/// <summary>Components hidden while the summon/recycle effect covers the character.</summary>
+	private readonly List<CanvasItem> characterParts = new List<CanvasItem>();
+
+	/// <summary>Hats, backs, props... that should also be clickable.</summary>
+	private readonly List<SpineSprite> accessories = new List<SpineSprite>();
+
 	public CapooView()
 	{
 	}
+
 	public CapooView(int id)
 	{
 		this.id = id;
 	}
 
 	private void InitBody()
-    {
+	{
 		Name = "body";
 		SkeletonDataRes = GD.Load<SpineSkeletonDataResource>($"res://assets/spine/body/{capooInfo.body}.res");
-    }
+	}
 
-    private SpineSprite AttachComponent(string nodeName, string boneName, string resPath, string anim = "")
-    {
-        // SpineBoneNode
-        SpineBoneNode boneNode = new SpineBoneNode();
-        boneNode.Name = nodeName + "_bone";
-        boneNode.Set("bone_name", boneName);
-        AddChild(boneNode);
+	private SpineSprite AttachComponent(string nodeName, string boneName, string resPath, string anim = "", bool behindBody = false)
+	{
+		var data = GD.Load<SpineSkeletonDataResource>(resPath);
+		if (data == null)
+		{
+			GD.PrintErr($"Missing Spine resource {resPath} for {capooInfo.id}");
+			return null;
+		}
 
-        // SpineSprite
-        SpineSprite sprite = new SpineSprite();
-        sprite.Name = nodeName;
-        sprite.SkeletonDataRes = GD.Load<SpineSkeletonDataResource>(resPath);
-        sprite.Scale = new Vector2(2.0f, 2.0f);
-        boneNode.AddChild(sprite);
+		// SpineBoneNode
+		SpineBoneNode boneNode = new SpineBoneNode();
+		boneNode.Name = nodeName + "_bone";
+		boneNode.Set("bone_name", boneName);
+		boneNode.ShowBehindParent = behindBody;
+		AddChild(boneNode);
 
-        // Apearance Animation
-        if (!string.IsNullOrEmpty(anim))
-        {
-            sprite.GetAnimationState().SetAnimation(anim, true, 0);
-        }
+		// SpineSprite
+		SpineSprite sprite = new SpineSprite();
+		sprite.Name = nodeName;
+		sprite.SkeletonDataRes = data;
+		sprite.Scale = new Vector2(2.0f, 2.0f);
+		boneNode.AddChild(sprite);
 
-        return sprite;
-    }
-	
+		// Apearance Animation
+		if (!string.IsNullOrEmpty(anim))
+		{
+			sprite.GetAnimationState().SetAnimation(anim, true, 0);
+		}
+
+		return sprite;
+	}
+
+	private SpineSprite AttachPart(string nodeName, string boneName, string folder, string resName, string anim, bool behindBody = false)
+	{
+		if (string.IsNullOrEmpty(resName)) return null;
+		var sprite = AttachComponent(nodeName, boneName, $"res://assets/spine/{folder}/{resName}.res", anim, behindBody);
+		if (sprite != null)
+		{
+			characterParts.Add(sprite);
+			if (folder != "face") accessories.Add(sprite);
+		}
+		return sprite;
+	}
+
 	private static void SetPooSkin(SpineSprite sprite, string skinName)
-    {
-        var skeleton = sprite.GetSkeleton();
+	{
+		var skeleton = sprite.GetSkeleton();
 		skeleton.SetSkinByName(skinName);
 		skeleton.SetToSetupPose();
-    }
-	
-	public void SetAnimation(string actionName, bool faceAniChange = true)
-	{
-		if (currentAction == actionName) return;
+	}
 
-		var capooAction = capooActionList.Find(action => action.action_name == actionName);
+	// ---- Actions ----
+
+	/// <summary>Plays an action on every layer it defines. Mood/effect/talk layers the action
+	/// leaves empty are hidden, like the original; food, poo and appear keep playing.</summary>
+	public bool SetAnimation(string actionName, bool faceAniChange = true, bool force = false)
+	{
+		if (!force && currentAction == actionName) return true;
+
+		var capooAction = config.GetAction(actionName);
+		if (capooAction == null) return false;
+
 		if (!string.IsNullOrEmpty(capooAction.body))
 			bodyAnimationState.SetAnimation(capooAction.body, capooAction.body_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.face) && faceAniChange)
-			if (faceAniChange) faceAnimationState.SetAnimation(capooAction.face, capooAction.face_loop, 0);
-		if (!string.IsNullOrEmpty(capooAction.mood))
-			moodAnimationState.SetAnimation(capooAction.mood, capooAction.mood_loop, 0);
-		if (!string.IsNullOrEmpty(capooAction.effectTop))
-			efxTopAnimationState.SetAnimation(capooAction.effectTop, capooAction.effectTop_loop, 0);
-		if (!string.IsNullOrEmpty(capooAction.effectBot))
-			efxBotAnimationState.SetAnimation(capooAction.effectBot, capooAction.effectBot_loop, 0);
+			faceAnimationState.SetAnimation(capooAction.face, capooAction.face_loop, 0);
+		PlayOrHide(moodAnimationState, capooAction.mood, capooAction.mood_loop);
+		PlayOrHide(efxTopAnimationState, capooAction.effectTop, capooAction.effectTop_loop);
+		PlayOrHide(efxBotAnimationState, capooAction.effectBot, capooAction.effectBot_loop);
+		PlayOrHide(talkAnimationState, capooAction.talk, capooAction.talk_loop);
 		if (!string.IsNullOrEmpty(capooAction.appear))
 			efxAppearAnimationState.SetAnimation(capooAction.appear, capooAction.appear_loop, 0);
-		if (!string.IsNullOrEmpty(capooAction.talk))
-			talkAnimationState.SetAnimation(capooAction.talk, capooAction.talk_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.food))
 			foodAnimationState.SetAnimation(capooAction.food, capooAction.food_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.poo))
 			pooAnimationState.SetAnimation(capooAction.poo, capooAction.poo_loop, 0);
 
 		currentAction = actionName;
+		return true;
 	}
-	
+
 	public void AddAnimation(string actionName, float delay = 0, bool faceAniChange = true)
 	{
-		var capooAction = capooActionList.Find(action => action.action_name == actionName);
+		var capooAction = config.GetAction(actionName);
+		if (capooAction == null) return;
+
 		if (!string.IsNullOrEmpty(capooAction.body))
 			bodyAnimationState.AddAnimation(capooAction.body, delay, capooAction.body_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.face) && faceAniChange)
-			if (faceAniChange) faceAnimationState.AddAnimation(capooAction.face, delay, capooAction.face_loop, 0);
+			faceAnimationState.AddAnimation(capooAction.face, delay, capooAction.face_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.mood))
 			moodAnimationState.AddAnimation(capooAction.mood, delay, capooAction.mood_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.effectTop))
@@ -114,6 +160,71 @@ public partial class CapooView : SpineSprite
 			foodAnimationState.AddAnimation(capooAction.food, delay, capooAction.food_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.poo))
 			pooAnimationState.AddAnimation(capooAction.poo, delay, capooAction.poo_loop, 0);
+	}
+
+	private static void PlayOrHide(SpineAnimationState state, string anim, bool loop)
+	{
+		if (string.IsNullOrEmpty(anim))
+			state.SetAnimation("hide_all", true, 0);
+		else
+			state.SetAnimation(anim, loop, 0);
+	}
+
+	/// <summary>Plays a raw animation on one layer without touching the others.</summary>
+	public void SetLayer(Layer layer, string anim, bool loop = true)
+	{
+		var state = GetLayerState(layer);
+		state?.SetAnimation(string.IsNullOrEmpty(anim) ? "hide_all" : anim, loop, 0);
+	}
+
+	public void HideLayer(Layer layer) => SetLayer(layer, "hide_all");
+
+	private SpineAnimationState GetLayerState(Layer layer) => layer switch
+	{
+		Layer.Body => bodyAnimationState,
+		Layer.Face => faceAnimationState,
+		Layer.Mood => moodAnimationState,
+		Layer.EffectTop => efxTopAnimationState,
+		Layer.EffectBot => efxBotAnimationState,
+		Layer.Talk => talkAnimationState,
+		Layer.Appear => efxAppearAnimationState,
+		Layer.Food => foodAnimationState,
+		Layer.Poo => pooAnimationState,
+		_ => null
+	};
+
+	/// <summary>Length of the body animation used by an action (0 if unknown or a pose).</summary>
+	public float GetActionDuration(string actionName)
+	{
+		var capooAction = config.GetAction(actionName);
+		if (capooAction == null) return 0;
+		if (!string.IsNullOrEmpty(capooAction.body)) return GetAnimationDuration(this, capooAction.body);
+		if (!string.IsNullOrEmpty(capooAction.appear)) return GetAnimationDuration(efxAppear, capooAction.appear);
+		return 0;
+	}
+
+	public float GetLayerAnimationDuration(Layer layer, string anim)
+	{
+		SpineSprite sprite = layer switch
+		{
+			Layer.Body => this,
+			Layer.Face => face,
+			Layer.Mood => mood,
+			Layer.EffectTop => efxTop,
+			Layer.EffectBot => efxBot,
+			Layer.Talk => talk,
+			Layer.Appear => efxAppear,
+			Layer.Food => food,
+			Layer.Poo => poo,
+			_ => null
+		};
+		return GetAnimationDuration(sprite, anim);
+	}
+
+	private static float GetAnimationDuration(SpineSprite sprite, string anim)
+	{
+		var animation = sprite?.SkeletonDataRes?.FindAnimation(anim);
+		return animation?.GetDuration() ?? 0;
 	}
 
 	public void ClearTrack()
@@ -146,66 +257,104 @@ public partial class CapooView : SpineSprite
 	{
 		ClearTrack();
 		SetEmptyAnimation();
+		currentAction = null;
+	}
+
+	// ---- Appearance ----
+
+	public void SetPetScale(float scale)
+	{
+		petScale = scale;
+		Scale = new Vector2(FacingRight ? -scale : scale, scale);
+	}
+
+	public void SetFacing(bool right)
+	{
+		Scale = new Vector2(right ? -petScale : petScale, petScale);
+		// Keep the bubble icons ("?", "!") readable when mirrored.
+		if (talk != null) talk.Scale = new Vector2(right ? -2.0f : 2.0f, 2.0f);
+	}
+
+	/// <summary>Hide/show the character itself while the summon or recycle effect plays.</summary>
+	public void SetCharacterVisible(bool visible)
+	{
+		SelfModulate = visible ? Colors.White : Colors.Transparent;
+		foreach (var part in characterParts) part.Visible = visible;
+	}
+
+	/// <summary>Global position of a body bone (e.g. "talk", "center", "hat").</summary>
+	public Vector2 GetBoneGlobalPosition(string boneName)
+	{
+		return GetGlobalBoneTransform(boneName).Origin;
+	}
+
+	/// <summary>Global rect of the talk bubble's current pose (empty when hidden).</summary>
+	public Rect2 GetTalkBubbleRect() => GetGlobalBounds(talk);
+
+	/// <summary>True if the point is on one of the accessories (hat, back, prop...).</summary>
+	public bool AccessoryHitTest(Vector2 world)
+	{
+		foreach (var part in accessories)
+		{
+			if (part.IsVisibleInTree() && GetGlobalBounds(part).HasPoint(world)) return true;
+		}
+		return false;
+	}
+
+	private static Rect2 GetGlobalBounds(SpineSprite sprite)
+	{
+		if (sprite == null) return new Rect2();
+		Rect2 local = sprite.GetSkeleton().GetBounds();
+		if (local.Size == Vector2.Zero) return new Rect2();
+		var xf = sprite.GetGlobalTransform();
+		Vector2 a = xf * local.Position;
+		Vector2 b = xf * (local.Position + local.Size);
+		return new Rect2(new Vector2(Mathf.Min(a.X, b.X), Mathf.Min(a.Y, b.Y)), (b - a).Abs());
 	}
 
 	public override void _Ready()
 	{
 		#region Capoo Component Initialization
-		var config = GetNode<CapooConfig>("/root/CapooConfig");
+		config = GetNode<CapooConfig>("/root/CapooConfig");
 		capooInfo = config.infos[id];
-		capooActionList = config.actions;
-		
-        InitBody();
+
+		InitBody();
 		bodyAnimationState = GetAnimationState();
-		if (capooInfo.handIndex) 
+		if (capooInfo.handIndex)
 			bodyAnimationState.SetAnimation("hand_prop_r_01", true, 1); // hand index track
 
-        face = AttachComponent("face", "body_face_root", $"res://assets/spine/face/{capooInfo.face}.res", capooInfo.face_Anim);
+		face = AttachPart("face", "body_face_root", "face", capooInfo.face, capooInfo.face_Anim);
 		faceAnimationState = face.GetAnimationState();
-        
-		if (!string.IsNullOrEmpty(capooInfo.face_decoration))
-        	faceDecoration = AttachComponent("face_decoration", "mask", $"res://assets/spine/face_decoration/{capooInfo.face_decoration}.res", capooInfo.face_decoration_Anim);
-        
-		if (!string.IsNullOrEmpty(capooInfo.hat))
-            hat = AttachComponent("hat", "hat", $"res://assets/spine/hat/{capooInfo.hat}.res", capooInfo.hat_Anim);
-			if (capooInfo.hat == "capoo_hat_009") // exception for capoo_001
-			{
-				var hatAnimationState = hat.GetAnimationState();
-				hatAnimationState.SetAnimation("hide_all", false, 0);
-			}
-        
-		if (!string.IsNullOrEmpty(capooInfo.clothes))
-            clothes = AttachComponent("clothes", "clothes", $"res://assets/spine/clothes/{capooInfo.clothes}.res", capooInfo.clothes_Anim);
-        
-		if (!string.IsNullOrEmpty(capooInfo.back))
-            back = AttachComponent("back", "back", $"res://assets/spine/back/{capooInfo.back}.res", capooInfo.back_Anim);
-			if (!string.IsNullOrEmpty(capooInfo.back_hierarchy)) back.ZIndex = int.Parse(capooInfo.back_hierarchy) -1;
-        
-		if (!string.IsNullOrEmpty(capooInfo.right_hand_item))
-        	rightHandItem = AttachComponent("right_hand_item", "prop_r", $"res://assets/spine/prop_r/{capooInfo.right_hand_item}.res", capooInfo.right_hand_item_Anim);
 
-		if (!string.IsNullOrEmpty(capooInfo.capoo_acc_top))
-        	accTop = AttachComponent("capoo_acc_top", "root", $"res://assets/spine/acc/{capooInfo.capoo_acc_top}.res", capooInfo.capoo_acc_top_Anim);
-		
-		if (!string.IsNullOrEmpty(capooInfo.capoo_acc_body))
-			accBody = AttachComponent("capoo_acc_body", "root", $"res://assets/spine/acc/{capooInfo.capoo_acc_body}.res", capooInfo.capoo_acc_body_Anim);
-		
-		if (!string.IsNullOrEmpty(capooInfo.capoo_acc_bot))
-			accBot = AttachComponent("capoo_acc_bot", "root", $"res://assets/spine/acc/{capooInfo.capoo_acc_bot}.res", capooInfo.capoo_acc_bot_Anim);
-		
+		faceDecoration = AttachPart("face_decoration", "mask", "mask", capooInfo.face_decoration, capooInfo.face_decoration_Anim);
+
+		hat = AttachPart("hat", "hat", "hat", capooInfo.hat, capooInfo.hat_Anim);
+		if (hat != null && capooInfo.hat == "capoo_hat_009") // exception for capoo_001
+			hat.GetAnimationState().SetAnimation("hide_all", false, 0);
+
+		clothes = AttachPart("clothes", "clothes", "clothes", capooInfo.clothes, capooInfo.clothes_Anim);
+
+		bool backBehind = capooInfo.back_hierarchy == "0";
+		back = AttachPart("back", "back", "back", capooInfo.back, capooInfo.back_Anim, backBehind);
+
+		rightHandItem = AttachPart("right_hand_item", "prop_r", "prop_r", capooInfo.right_hand_item, capooInfo.right_hand_item_Anim);
+
+		accTop = AttachPart("capoo_acc_top", "root", "capoo_acc_top", capooInfo.capoo_acc_top, capooInfo.capoo_acc_top_Anim);
+		accBody = AttachPart("capoo_acc_body", "root", "capoo_acc_body", capooInfo.capoo_acc_body, capooInfo.capoo_acc_body_Anim);
+		accBot = AttachPart("capoo_acc_bot", "root", "capoo_acc_bot", capooInfo.capoo_acc_bot, capooInfo.capoo_acc_bot_Anim);
+
 		mood = AttachComponent("mood", "body_mood", $"res://assets/spine/mood/{capooInfo.mood}.res", capooInfo.mood_Anim);
 		moodAnimationState = mood.GetAnimationState();
 
-		efxBot = AttachComponent("efx_bot", "root", $"res://assets/spine/efx_bot/{capooInfo.efx_bot}.res", capooInfo.efx_bot_Anim);
+		efxBot = AttachComponent("efx_bot", "root", $"res://assets/spine/efx_bot/{capooInfo.efx_bot}.res", capooInfo.efx_bot_Anim, behindBody: true);
 		efxBotAnimationState = efxBot.GetAnimationState();
-		efxBot.ZIndex = -2;  // effect in buttom
 
 		efxTop = AttachComponent("efx_top", "root", $"res://assets/spine/efx_top/{capooInfo.efx_top}.res", capooInfo.efx_top_Anim);
 		efxTopAnimationState = efxTop.GetAnimationState();
-		
+
 		efxAppear = AttachComponent("efx_appears", "root", $"res://assets/spine/efx_appear/{capooInfo.efx_appears}.res", capooInfo.efx_appears_Anim);
 		efxAppearAnimationState = efxAppear.GetAnimationState();
-		
+
 		talk = AttachComponent("talk", "talk", $"res://assets/spine/char_talk/{capooInfo.talk}.res", capooInfo.talk_Anim);
 		talkAnimationState = talk.GetAnimationState();
 
@@ -214,36 +363,11 @@ public partial class CapooView : SpineSprite
 
 		poo = AttachComponent("poo", "root", $"res://assets/spine/poo/{capooInfo.poo}.res", capooInfo.poo_Anim);
 		pooAnimationState = poo.GetAnimationState();
-        SetPooSkin(poo, "poo_01");
+		SetPooSkin(poo, "poo_01");
 		#endregion
 
-		// Appear Animation
-		AddAnimation("summonAppear");
-		AddAnimation("idle_idle1", 1, false);
-		// talkAnimationState.SetAnimation("talk_hungry", true, 0);
-		
-
-	}
-
-	public override void _Process(double delta)
-	{
-		// float Speed = 200.0f;
-		// Vector2 inputDir = Input.GetVector("left", "right", "up", "down");
-		
-		// if (inputDir != Vector2.Zero)
-		// {
-		// 	Position += inputDir * Speed * (float)delta;
-
-		// 	if (inputDir.X != 0)
-		// 	{
-		// 		Scale = new Vector2(-Mathf.Sign(inputDir.X) * Mathf.Abs(Scale.X), Scale.Y);
-		// 	}
-
-		// 	SetAnimation("walk2", false); 
-		// }
-		// else if (Input.IsActionJustReleased("left") || Input.IsActionJustReleased("right") || Input.IsActionJustReleased("up") || Input.IsActionJustReleased("down"))
-		// {
-		// 	SetAnimation("idle_idle1", false);
-		// }
+		characterParts.Add(mood);
+		ClearAnimation();
+		SetFacing(FacingRight);
 	}
 }

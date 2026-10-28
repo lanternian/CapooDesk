@@ -1,79 +1,50 @@
-using Godot;
 using System;
 
-public partial class CapooNeeds : Node
+/// <summary>
+/// Gentle care timers: a Capoo may get hungry or need to poo once enough time has passed
+/// since it last ate / pooed. Ignoring it has no consequences, it just asks again later.
+/// </summary>
+public class CapooNeeds
 {
-	// Current need levels (0.0 - 1.0)
-	public float HungerLevel { get; private set; } = 0.0f;
-	public float PoopUrgency { get; private set; } = 0.0f; // increases after eating
-	public float MoodLevel { get; private set; } = 1.0f;   // starts happy
+	// Minutes between requests for care levels 0 (off), 1 (low), 2 (normal), 3 (often).
+	private static readonly double[] HungerMinutes = { double.PositiveInfinity, 40, 15, 5 };
+	private static readonly double[] PooMinutes = { double.PositiveInfinity, 50, 20, 7 };
 
-	// Configurable rates
-	public float HungerRate { get; set; } = 0.01f;       // per second
-	public float PoopRate { get; set; } = 0.005f;        // per second after eating
-	public float MoodDecayRate { get; set; } = 0.002f;   // natural mood decay per second
-	public float PetMoodBoost { get; set; } = 0.15f;
-	public float HitMoodPenalty { get; set; } = 0.05f;
-	public float FeedHungerReduction { get; set; } = 0.3f;
-	public float FeedPoopIncrease { get; set; } = 0.2f;
+	private double sinceFed;
+	private double sincePoo;
 
-	// Thresholds
-	public float HungryThreshold { get; set; } = 0.7f;
-	public float PoopThreshold { get; set; } = 0.8f;
+	public bool JustAte { get; set; }
+
+	public CapooNeeds(int careLevel)
+	{
+		// Stagger the first request so a freshly restored desktop doesn't get hungry all at once.
+		double hunger = Interval(HungerMinutes, careLevel);
+		double poo = Interval(PooMinutes, careLevel);
+		sinceFed = double.IsInfinity(hunger) ? 0 : Random.Shared.NextDouble() * 0.8 * hunger;
+		sincePoo = double.IsInfinity(poo) ? 0 : Random.Shared.NextDouble() * 0.8 * poo;
+	}
 
 	public void Tick(double delta)
 	{
-		float dt = (float)delta;
-
-		// Hunger increases over time
-		HungerLevel = Clamp01(HungerLevel + HungerRate * dt);
-
-		// Poop urgency increases slowly over time, faster when hungry just ate
-		PoopUrgency = Clamp01(PoopUrgency + PoopRate * dt);
-
-		// Mood naturally decays, faster when hungry
-		float decayMultiplier = IsHungry() ? 2.0f : 1.0f;
-		MoodLevel = Clamp01(MoodLevel - MoodDecayRate * decayMultiplier * dt);
+		sinceFed += delta;
+		sincePoo += delta;
 	}
 
-	public bool IsHungry()
+	public bool CanBeHungry(int careLevel) => sinceFed >= Interval(HungerMinutes, careLevel);
+	public bool CanPoo(int careLevel) => sincePoo >= Interval(PooMinutes, careLevel);
+
+	public void Fed()
 	{
-		return HungerLevel > HungryThreshold;
+		sinceFed = 0;
+		JustAte = true;
+		// Eating makes a poo come a bit sooner.
+		sincePoo += 60;
 	}
 
-	public bool NeedsPoop()
-	{
-		return PoopUrgency >= PoopThreshold;
-	}
+	/// <summary>Nobody answered the bubble: ask again after half an interval.</summary>
+	public void HungerIgnored(int careLevel) => sinceFed = Interval(HungerMinutes, careLevel) * 0.5;
 
-	public void Feed(float amount)
-	{
-		float feedAmount = amount > 0 ? amount : FeedHungerReduction;
-		HungerLevel = Clamp01(HungerLevel - feedAmount);
-		PoopUrgency = Clamp01(PoopUrgency + FeedPoopIncrease);
-		// Eating improves mood a little
-		MoodLevel = Clamp01(MoodLevel + 0.05f);
-	}
+	public void Pooed() => sincePoo = 0;
 
-	public void CleanPoop()
-	{
-		PoopUrgency = 0.0f;
-		// Relief improves mood
-		MoodLevel = Clamp01(MoodLevel + 0.1f);
-	}
-
-	public void Pet()
-	{
-		MoodLevel = Clamp01(MoodLevel + PetMoodBoost);
-	}
-
-	public void Hit()
-	{
-		MoodLevel = Clamp01(MoodLevel - HitMoodPenalty);
-	}
-
-	private static float Clamp01(float value)
-	{
-		return Mathf.Clamp(value, 0.0f, 1.0f);
-	}
+	private static double Interval(double[] table, int careLevel) => table[Math.Clamp(careLevel, 0, 3)] * 60.0;
 }

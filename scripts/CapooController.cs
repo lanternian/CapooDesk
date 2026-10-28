@@ -1,497 +1,305 @@
 using Godot;
 using System;
 
+/// <summary>
+/// One Capoo on the desktop. Origin is at the feet.
+/// This file: setup, physics and geometry. Behaviour states live in CapooController.Behavior.cs,
+/// mouse handling in CapooController.Interaction.cs.
+/// </summary>
 public partial class CapooController : CharacterBody2D
 {
-	// Config
-	public Vector2 scale = new Vector2(0.796f, 0.796f);
-	public Vector2 position = new Vector2(506, 306);
-	public const float WalkSpeed = 80.0f;
-	public const float RunSpeed = 160.0f;
-	public const float WildSpeed = 240.0f;
+	// Outline around the body in view units (unscaled, facing left), feet at the origin.
+	private static readonly Vector2[] BodyOutline =
+	{
+		new Vector2(-90, -283.75f),
+		new Vector2(-149, -220),
+		new Vector2(-189, -125),
+		new Vector2(-164, -62),
+		new Vector2(-103, -12),
+		new Vector2(-26, -6),
+		new Vector2(94, -8),
+		new Vector2(155, -26),
+		new Vector2(184, -115),
+		new Vector2(172, -169),
+		new Vector2(147.5f, -201.25f),
+		new Vector2(85, -278.75f),
+		new Vector2(0, -262.5f)
+	};
+	private const float OutlineWidth = 373f;
+	private const float OutlineHeight = 284f;
 
-	// Components
-	private CapooView capooView;
-	private CapooStateMachine stateMachine;
-	private CapooNeeds needs;
+	public const float Gravity = 2200f;
+	public const float MaxFallSpeed = 4000f;
+	public const float MaxThrowSpeed = 3500f;
+	// Pixels per second for one Game_Parameter speed unit at pet scale 1.
+	private const float SpeedUnit = 150f;
 
-	// Identity
-	public int InfoIndex { get; private set; } = 1;
-	public void SetInfoIndex(int index) => InfoIndex = index;
+	public int InfoIndex { get; private set; }
+	public CapooInfo Info => view?.Info;
+	public string DisplayName => Info?.name ?? "";
+	public CapooState State => state;
+	public CapooView View => view;
+	public float PetScale { get; private set; } = 0.5f;
+	public bool FacingRight => view.FacingRight;
 
-	// Mouse interaction
-	private bool isMouseOver = false;
-	private bool isDragging = false;
-	private bool isFalling = false;
-	private Vector2 dragOffset = Vector2.Zero;
-	private double clickHoldTime = 0.0;
-	private bool isClickHeld = false;
-	private bool wasClickOnBody = false;
+	/// <summary>Size of the body outline in pixels.</summary>
+	public Vector2 BodySize { get; private set; }
 
-	// Interaction cooldowns
-	private double hitCooldown = 0.0;
-	private double talkHungryCooldown = 0.0;
-	private const double HitCooldownTime = 0.5;
-	private const double TalkHungryCooldownTime = 10.0;
-	private const double PetThreshold = 0.3;  // seconds held = pet vs drag
+	/// <summary>Where a Capoo stacked on this one stands (world Y).</summary>
+	public float HeadY => GlobalPosition.Y - BodySize.Y * (state == CapooState.Stacked ? 0.62f : 0.76f);
 
-	// Pooping state
-	private bool isPooping = false;
-	private double poopTimer = 0.0;
-	private const double PoopDuration = 2.5;
+	/// <summary>Rough body box in world coordinates, used for Capoo-to-Capoo collisions.</summary>
+	public Rect2 BodyRect => new Rect2(
+		GlobalPosition.X - BodySize.X * 0.35f, GlobalPosition.Y - BodySize.Y * 0.85f,
+		BodySize.X * 0.7f, BodySize.Y * 0.85f);
 
-	// Physics
-	public new float gravity = ProjectSettings.GetSetting("physics/2d/default_gravity").AsSingle();
-	private double fallingDelta = 0;
-	private const double FallingTime = 0.9;
+	/// <summary>Window (hwnd) whose top edge this Capoo stands on, 0 for the taskbar floor.</summary>
+	public long FloorHwnd { get; private set; }
 
-	// Autonomous movement
-	private int moveDirection = 0; // -1 left, 0 none, 1 right
-	private double idleDecisionTimer = 0.0;
-	private double walkDuration = 0.0;
+	public CapooController StackBelow { get; private set; }
+	public CapooController StackAbove { get; private set; }
+
+	private static SettingsData Settings => AppSettings.Instance.Data;
+	private GameParameter Parameters => config.parameters;
+
+	private CapooConfig config;
+	private CapooView view;
+	private RectangleShape2D bodyShape;
+	private CollisionShape2D bodyCollision;
+	private Vector2[] pickPolygon = Array.Empty<Vector2>();
+	private double offFloorTime;
+
+	public CapooController()
+	{
+	}
+
+	public CapooController(int infoIndex, float scale)
+	{
+		InfoIndex = infoIndex;
+		PetScale = scale;
+	}
 
 	public override void _Ready()
 	{
-		DisplayServer.WindowSetMousePassthrough(new Vector2[] { new Vector2(-1, -1) });
-		Scale = scale;
-		Position = position;
-		InputPickable = true;
+		CollisionLayer = PhysicsLayers.Pet;
+		CollisionMask = PhysicsLayers.World | PhysicsLayers.Platform;
+		MotionMode = MotionModeEnum.Grounded;
+		UpDirection = Vector2.Up;
+		FloorSnapLength = 10f;
+		FloorStopOnSlope = true;
 
-		// State machine
-		stateMachine = new CapooStateMachine();
-		stateMachine.Name = "StateMachine";
-		AddChild(stateMachine);
+		config = GetNode<CapooConfig>("/root/CapooConfig");
+		view = new CapooView(InfoIndex);
+		AddChild(view);
 
-		// Needs system
-		needs = new CapooNeeds();
-		needs.Name = "Needs";
-		AddChild(needs);
+		bodyShape = new RectangleShape2D();
+		bodyCollision = new CollisionShape2D { Name = "capoo_collision", Shape = bodyShape };
+		AddChild(bodyCollision);
 
-		// View
-		capooView = new CapooView(InfoIndex);
-		AddChild(capooView);
-
-		// Collisions
-		var talkPolygon = new CollisionPolygon2D();
-		talkPolygon.Name = "talk_collision";
-		talkPolygon.Polygon = new Vector2[]
-		{
-			new Vector2(-194, -244),
-			new Vector2(-219, -250),
-			new Vector2(-259, -238),
-			new Vector2(-301, -241),
-			new Vector2(-342, -279),
-			new Vector2(-343, -329),
-			new Vector2(-332, -357),
-			new Vector2(-303, -386),
-			new Vector2(-241, -397),
-			new Vector2(-194, -371),
-			new Vector2(-172, -312),
-			new Vector2(-192, -273)
-		};
-		AddChild(talkPolygon);
-
-		var collisionPolygon = new CollisionPolygon2D();
-		collisionPolygon.Name = "capoo_collision";
-		collisionPolygon.Polygon = new Vector2[]
-		{
-			new Vector2(-90, -283.75f),
-			new Vector2(-149, -220),
-			new Vector2(-189, -125),
-			new Vector2(-164, -62),
-			new Vector2(-103, -12),
-			new Vector2(-26, -6),
-			new Vector2(94, -8),
-			new Vector2(155, -26),
-			new Vector2(184, -115),
-			new Vector2(172, -169),
-			new Vector2(147.5f, -201.25f),
-			new Vector2(85, -278.75f),
-			new Vector2(0, -262.5f)
-		};
-		AddChild(collisionPolygon);
-
-		Connect("mouse_entered", Callable.From(() => { isMouseOver = true; }));
-		Connect("mouse_exited", Callable.From(() => { isMouseOver = false; }));
-
-		SpineBone dragBone = capooView.GetSkeleton().FindBone("center");
-		dragOffset = new Vector2(dragBone.GetWorldX(), dragBone.GetWorldY()) * Scale;
-
-		// Start with appear animation, then enter idle
-		capooView.AddAnimation("summonAppear");
-		capooView.AddAnimation($"idle_idle{Random.Shared.Next(1, 7)}", 1, false);
-		idleDecisionTimer = Random.Shared.Next(3, 8);
+		ApplyScale(PetScale);
+		needs = new CapooNeeds(Settings.CareLevel);
+		EnterState(CapooState.Appear);
 	}
 
-	public override void _Process(double delta)
+	public override void _ExitTree()
 	{
-		// Update cooldowns
-		hitCooldown -= delta;
-		talkHungryCooldown -= delta;
-
-		// --- Right-click: toggle magic book (GameUI) ---
-		if (Input.IsActionJustPressed("right_click") && isMouseOver)
+		if (StackAbove != null && IsInstanceValid(StackAbove))
 		{
-			HandleRightClick();
+			var above = StackAbove;
+			above.DetachFromBelow();
+			above.StartFalling();
 		}
-
-		// --- Left click held: track time for pet vs drag distinction ---
-		if (isClickHeld && isMouseOver)
-		{
-			clickHoldTime += delta;
-		}
-
-		// --- Left click pressed: mark potential body click ---
-		if (Input.IsActionJustPressed("left_click") && isMouseOver && !isDragging)
-		{
-			isClickHeld = true;
-			clickHoldTime = 0.0;
-			wasClickOnBody = true;
-		}
-
-		// If mouse exits while held, cancel click intent (becomes drag only)
-		if (isClickHeld && !isMouseOver && !isDragging)
-		{
-			wasClickOnBody = false;
-		}
-
-		// --- Transition to drag mode if held long enough ---
-		if (isClickHeld && clickHoldTime >= PetThreshold && !isDragging && wasClickOnBody)
-		{
-			isDragging = true;
-			wasClickOnBody = false;
-			stateMachine.ForceState(CapooState.Dragged);
-			capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.CatchUp));
-			return;
-		}
-
-		// --- Left click released: determine pet or hit ---
-		if (Input.IsActionJustReleased("left_click"))
-		{
-			if (isDragging)
-			{
-				// Drag release -> throw
-				isDragging = false;
-				isFalling = true;
-				isClickHeld = false;
-				Velocity = Input.GetLastMouseVelocity();
-				stateMachine.ForceState(CapooState.Falling);
-				capooView.SetAnimation("air");
-				return;
-			}
-
-			if (isClickHeld && wasClickOnBody && !isFalling)
-			{
-				HandleBodyClick();
-			}
-
-			isClickHeld = false;
-			wasClickOnBody = false;
-		}
-
-		// While dragging, follow mouse
-		if (isDragging)
-		{
-			var nPos = GetGlobalMousePosition() - dragOffset;
-			UpdateFaceDirection(nPos.X - Position.X);
-			Position = nPos;
-			return;
-		}
-
-		// Falling handled in _PhysicsProcess
-		if (isFalling) return;
-
-		// Pooping cycle
-		if (isPooping)
-		{
-			ProcessPooping(delta);
-			return;
-		}
-
-		// Autonomous behavior
-		ProcessAutonomousBehavior(delta);
+		DetachFromBelow();
 	}
+
+	public void ApplyScale(float scale)
+	{
+		PetScale = scale;
+		view.SetPetScale(scale);
+
+		float adjust = Info.collider_Adjust > 0 ? Info.collider_Adjust : 1f;
+		float s = scale * adjust;
+		BodySize = new Vector2(OutlineWidth * s, OutlineHeight * s);
+		bodyShape.Size = new Vector2(BodySize.X * 0.55f, BodySize.Y * 0.8f);
+		bodyCollision.Position = new Vector2(0, -bodyShape.Size.Y / 2f);
+
+		pickPolygon = new Vector2[BodyOutline.Length];
+		for (int i = 0; i < BodyOutline.Length; i++) pickPolygon[i] = BodyOutline[i] * s;
+	}
+
+	public void SetFacing(bool right) => view.SetFacing(right);
+
+	private void TurnTo(float directionX)
+	{
+		if (Mathf.Abs(directionX) > 0.01f) SetFacing(directionX > 0);
+	}
+
+	// ---- Hit testing ----
+
+	public bool HitTest(Vector2 world)
+	{
+		if (state == CapooState.Recycle || view == null) return false;
+		Vector2 local = world - GlobalPosition;
+		// Cheap reject: accessories never reach further than ~one body size away.
+		if (Mathf.Abs(local.X) > BodySize.X * 1.2f || local.Y > BodySize.Y * 0.3f || local.Y < -BodySize.Y * 2.2f) return false;
+		if (FacingRight) local.X = -local.X;
+		return Geometry2D.IsPointInPolygon(local, pickPolygon) || view.AccessoryHitTest(world);
+	}
+
+	public bool BubbleHitTest(Vector2 world)
+	{
+		if (!HasBubble) return false;
+		Rect2 rect = view.GetTalkBubbleRect();
+		return rect.Size != Vector2.Zero && rect.Grow(6).HasPoint(world);
+	}
+
+	/// <summary>Outline polygon in world coordinates (debug drawing).</summary>
+	public Vector2[] GetWorldOutline()
+	{
+		var result = new Vector2[pickPolygon.Length];
+		for (int i = 0; i < pickPolygon.Length; i++)
+		{
+			Vector2 p = pickPolygon[i];
+			if (FacingRight) p.X = -p.X;
+			result[i] = GlobalPosition + p;
+		}
+		return result;
+	}
+
+	// ---- Physics ----
 
 	public override void _PhysicsProcess(double delta)
 	{
-		if (isFalling)
-		{
-			fallingDelta += delta;
-			Velocity = new Vector2(Velocity.X, Velocity.Y + gravity * (float)delta);
+		if (state is CapooState.Dragged or CapooState.Stacked or CapooState.Recycle or CapooState.Appear)
+			return;
 
-			if (fallingDelta >= FallingTime)
-			{
-				fallingDelta = 0;
-				Velocity = Vector2.Zero;
-				isFalling = false;
-				capooView.ClearAnimation();
-				capooView.AddAnimation("fall");
-				capooView.AddAnimation($"idle_idle{Random.Shared.Next(1, 7)}");
-				stateMachine.ForceState(CapooState.Idle);
-				idleDecisionTimer = Random.Shared.Next(3, 8);
-			}
-		}
-		else if (isPooping)
-		{
-			// Pooping: stay still with gravity
-			Velocity = new Vector2(0, Velocity.Y + gravity * (float)delta);
-		}
-		else if (stateMachine.CurrentState is CapooState.Walking or CapooState.Running)
-		{
-			float speed = stateMachine.CurrentState == CapooState.Running ? RunSpeed : WalkSpeed;
-			Velocity = new Vector2(moveDirection * speed, Velocity.Y + gravity * (float)delta);
-		}
-		else
-		{
-			// Idle or other states: apply gravity but no horizontal movement
-			Velocity = new Vector2(0, Velocity.Y + gravity * (float)delta);
-		}
+		float dt = (float)delta;
+		Vector2 previous = GlobalPosition;
+		bool airborne = state.IsAirborne() || state == CapooState.Hop;
+
+		Vector2 v = Velocity;
+		if (!airborne) v.X = state.IsMoving() ? moveDirection * moveSpeed : 0f;
+		v.Y = Mathf.Min(v.Y + Gravity * dt, MaxFallSpeed);
+		Velocity = v;
+		Vector2 impact = v;
 
 		MoveAndSlide();
+		UpdateFloorHwnd();
 
-		// Screen floor: clamp so Capoo doesn't fall off screen
-		var screen = DisplayServer.ScreenGetSize(0);
-		float floorY = screen.Y - 50f;
-		if (Position.Y > floorY)
+		if (airborne)
 		{
-			Position = new Vector2(Position.X, floorY);
-			Velocity = new Vector2(Velocity.X, 0);
-		}
-	}
-
-	// ---- Interaction Handlers ----
-
-	private void HandleRightClick()
-	{
-		// Toggle the magic book via GameUI CanvasLayer
-		var gameUI = GetNodeOrNull<CanvasLayer>("/root/GameUI");
-		if (gameUI != null)
-		{
-			var anchorScreenPos = GetGlobalMousePosition();
-			gameUI.Call("ToggleMagicBook", anchorScreenPos);
-		}
-	}
-
-	private void HandleBodyClick()
-	{
-		// Short click = hit reaction (quick tap)
-		// Longer hold (but under drag threshold) = could be double-click context
-		if (stateMachine.CurrentState is CapooState.Dragged or CapooState.Falling or CapooState.Pooping)
-			return;
-
-		if (clickHoldTime < PetThreshold)
-		{
-			// Quick tap -> hit reaction
-			TriggerHitReaction();
-		}
-	}
-
-	/// <summary>
-	/// Called externally or from double-click detection to trigger pet reaction.
-	/// </summary>
-	public void TriggerPetReaction()
-	{
-		if (stateMachine.CurrentState is CapooState.Dragged or CapooState.Falling or CapooState.Pooping)
-			return;
-
-		if (stateMachine.TransitionTo(CapooState.Petting))
-		{
-			needs.Pet();
-			moveDirection = 0;
-			capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.Pet));
-			stateMachine.SetStateDuration(1.5);
-
-			// After petting, return to idle
-			GetTree().CreateTimer(1.5).Timeout += () =>
+			if (IsOnWall())
 			{
-				if (stateMachine.CurrentState == CapooState.Petting)
-				{
-					stateMachine.TransitionTo(CapooState.Idle);
-					capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.Enjoy));
-					idleDecisionTimer = Random.Shared.Next(3, 8);
-				}
-			};
-		}
-	}
+				Velocity = new Vector2(-impact.X * 0.45f, Velocity.Y);
+				TurnTo(Velocity.X);
+			}
+			if (state == CapooState.Roll && Velocity.Y > 0) EnterState(CapooState.Air);
 
-	private void TriggerHitReaction()
-	{
-		if (hitCooldown > 0) return;
-
-		hitCooldown = HitCooldownTime;
-		needs.Hit();
-
-		// Force to idle first if walking/running so animation plays cleanly
-		moveDirection = 0;
-		stateMachine.ForceState(CapooState.Idle);
-		capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.Hit));
-
-		// Return to idle after hit animation
-		idleDecisionTimer = Random.Shared.Next(2, 5);
-	}
-
-	// ---- Needs-Driven Behavior ----
-
-	private void ProcessAutonomousBehavior(double delta)
-	{
-		// Tick needs
-		needs.Tick(delta);
-
-		// Check hunger -> show talk_hungry bubble
-		if (needs.IsHungry() && talkHungryCooldown <= 0 && stateMachine.CurrentState == CapooState.Idle)
-		{
-			ShowHungerBubble();
-			talkHungryCooldown = TalkHungryCooldownTime;
-		}
-
-		// Check poop urgency -> start pooping
-		if (needs.NeedsPoop() && !isPooping && stateMachine.CurrentState is CapooState.Idle or CapooState.Walking)
-		{
-			StartPooping();
-			return;
-		}
-
-		switch (stateMachine.CurrentState)
-		{
-			case CapooState.Idle:
-				idleDecisionTimer -= delta;
-				if (idleDecisionTimer <= 0)
-				{
-					DecideNextAction();
-				}
-				break;
-
-			case CapooState.Walking:
-			case CapooState.Running:
-				walkDuration -= delta;
-				if (walkDuration <= 0 || IsNearScreenEdge())
-				{
-					TransitionToIdle();
-				}
-				break;
-
-			case CapooState.Sleeping:
-				// Sleep until user interacts (handled in drag/click logic)
-				break;
-		}
-	}
-
-	private void ShowHungerBubble()
-	{
-		// Set the talk layer to hungry animation without changing body/face
-		capooView.SetAnimation("talk_hungry", faceAniChange: false);
-		// The talk animation will be cleared when the next idle action plays
-	}
-
-	// ---- Pooping Cycle ----
-
-	private void StartPooping()
-	{
-		isPooping = true;
-		poopTimer = 0.0;
-		moveDirection = 0;
-		Velocity = new Vector2(0, Velocity.Y);
-		stateMachine.ForceState(CapooState.Pooping);
-		capooView.SetAnimation("pooing");
-	}
-
-	private void ProcessPooping(double delta)
-	{
-		poopTimer += delta;
-
-		if (poopTimer >= PoopDuration)
-		{
-			EndPooping();
-		}
-	}
-
-	private void EndPooping()
-	{
-		isPooping = false;
-		poopTimer = 0.0;
-		needs.CleanPoop();
-		stateMachine.ForceState(CapooState.Idle);
-		capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.Idle));
-		idleDecisionTimer = Random.Shared.Next(3, 8);
-	}
-
-	// ---- Autonomous Movement ----
-
-	private void DecideNextAction()
-	{
-		double roll = Random.Shared.NextDouble();
-
-		if (roll < 0.15)
-		{
-			// Start running
-			moveDirection = Random.Shared.Next(0, 2) * 2 - 1; // -1 or 1
-			if (moveDirection == 0) moveDirection = 1;
-			walkDuration = Random.Shared.Next(1, 4);
-			stateMachine.TransitionTo(CapooState.Running);
-			capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.Running));
-			UpdateFaceDirection(moveDirection);
-		}
-		else if (roll < 0.45)
-		{
-			// Start walking
-			moveDirection = Random.Shared.Next(0, 2) * 2 - 1;
-			if (moveDirection == 0) moveDirection = 1;
-			walkDuration = Random.Shared.Next(2, 7);
-			stateMachine.TransitionTo(CapooState.Walking);
-			capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.Walking));
-			UpdateFaceDirection(moveDirection);
+			if (IsOnFloor() && impact.Y >= 0)
+				OnLanded(impact);
+			else if (impact.Y > 0)
+				PetManager.Instance?.TryStackOnto(this, previous);
 		}
 		else
 		{
-			// Stay idle, pick a new idle animation
-			capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.Idle));
-			idleDecisionTimer = Random.Shared.Next(3, 10);
+			if (IsOnFloor())
+				offFloorTime = 0;
+			else if ((offFloorTime += dt) > 0.1)
+				StartFalling();
+
+			if (state.IsMoving())
+			{
+				if (IsOnWall()) OnBlocked();
+				else if (FloorHwnd != 0 && IsEdgeAhead()) OnPlatformEdge();
+			}
+		}
+
+		ClampToWorld();
+	}
+
+	private void UpdateFloorHwnd()
+	{
+		FloorHwnd = 0;
+		if (!IsOnFloor()) return;
+		for (int i = 0; i < GetSlideCollisionCount(); i++)
+		{
+			var collision = GetSlideCollision(i);
+			if (collision.GetNormal().Y < -0.7f && collision.GetCollider() is Node node && node.HasMeta("hwnd"))
+			{
+				FloorHwnd = node.GetMeta("hwnd").AsInt64();
+				return;
+			}
 		}
 	}
 
-	private void TransitionToIdle()
+	/// <summary>Standing on something (used before physics has run for this Capoo).</summary>
+	private bool IsResting() => TestMove(GlobalTransform, new Vector2(0, 6));
+
+	/// <summary>No ground a little ahead of the feet (end of a window's top edge).</summary>
+	private bool IsEdgeAhead()
 	{
-		moveDirection = 0;
-		Velocity = new Vector2(0, Velocity.Y);
-		stateMachine.TransitionTo(CapooState.Idle);
-		capooView.SetAnimation(CapooActionPools.RandomFrom(CapooActionPools.Idle));
-		idleDecisionTimer = Random.Shared.Next(3, 10);
+		float x = GlobalPosition.X + moveDirection * BodySize.X * 0.25f;
+		var query = PhysicsRayQueryParameters2D.Create(
+			new Vector2(x, GlobalPosition.Y - 6), new Vector2(x, GlobalPosition.Y + 24),
+			PhysicsLayers.World | PhysicsLayers.Platform);
+		return GetWorld2D().DirectSpaceState.IntersectRay(query).Count == 0;
 	}
 
-	private bool IsNearScreenEdge()
+	private void ClampToWorld()
 	{
-		var screen = DisplayServer.ScreenGetSize(0);
-		var margin = 100f;
-		float x = Position.X;
+		var size = DesktopWindow.Instance.Size;
+		float half = BodySize.X * 0.45f;
+		Vector2 p = GlobalPosition;
+		p.X = Mathf.Clamp(p.X, half, size.X - half);
+		p.Y = Mathf.Min(p.Y, size.Y);
+		GlobalPosition = p;
+	}
 
-		if (moveDirection < 0 && x < margin)
-		{
-			moveDirection = 1;
-			UpdateFaceDirection(1);
-			return false; // Turn around instead of stopping
-		}
-		if (moveDirection > 0 && x > screen.X - margin)
-		{
-			moveDirection = -1;
-			UpdateFaceDirection(-1);
-			return false;
-		}
+	/// <summary>Move along with the window this Capoo is standing on.</summary>
+	public void Carry(Vector2 delta)
+	{
+		GlobalPosition += delta;
+	}
+
+	// ---- Stacking ----
+
+	public void AttachOnto(CapooController below)
+	{
+		DetachFromBelow();
+		StackBelow = below;
+		below.StackAbove = this;
+	}
+
+	public void DetachFromBelow()
+	{
+		if (StackBelow == null) return;
+		if (IsInstanceValid(StackBelow) && StackBelow.StackAbove == this) StackBelow.StackAbove = null;
+		StackBelow = null;
+	}
+
+	/// <summary>Number of Capoos in this one's stack, from the bottom up to the top.</summary>
+	public int StackSize()
+	{
+		var bottom = this;
+		while (bottom.StackBelow != null) bottom = bottom.StackBelow;
+		int count = 1;
+		for (var c = bottom.StackAbove; c != null; c = c.StackAbove) count++;
+		return count;
+	}
+
+	/// <summary>True if <paramref name="other"/> rides somewhere above this Capoo.</summary>
+	public bool IsCarrying(CapooController other)
+	{
+		for (var c = StackAbove; c != null; c = c.StackAbove)
+			if (c == other) return true;
 		return false;
 	}
 
-	private void UpdateFaceDirection(float moveX)
+	/// <summary>Called by PetManager after the Capoo below has moved.</summary>
+	public void FollowStack()
 	{
-		if (Mathf.IsZeroApprox(moveX)) return;
-
-		Vector2 currentScale = capooView.Scale;
-		if (moveX > 0)
-		{
-			currentScale.X = -Mathf.Abs(currentScale.X);
-		}
-		else
-		{
-			currentScale.X = Mathf.Abs(currentScale.X);
-		}
-		capooView.Scale = currentScale;
+		if (StackBelow == null || !IsInstanceValid(StackBelow)) return;
+		GlobalPosition = new Vector2(StackBelow.GlobalPosition.X, StackBelow.HeadY);
+		if (FacingRight != StackBelow.FacingRight) SetFacing(StackBelow.FacingRight);
 	}
 }

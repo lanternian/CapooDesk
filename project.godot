@@ -10,22 +10,28 @@ config_version=5
 
 [application]
 
-config/name="capoo"
-run/main_scene="res://scenes/test.tscn"
+config/name="CapooDesk"
+run/main_scene="res://scenes/main.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="CapooDesk"
 config/features=PackedStringArray("4.2", "C#", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
 CapooConfig="*res://scripts/CapooConfig.cs"
-CustomWin="*res://scripts/CustomWin.cs"
+AppSettings="*res://scripts/AppSettings.cs"
+DesktopWindow="*res://scripts/DesktopWindow.cs"
 
 [display]
 
-window/size/mode=3
 window/size/resizable=false
 window/size/borderless=true
 window/size/always_on_top=true
+window/size/transparent=true
+window/size/no_focus=true
+window/energy_saving/keep_screen_on=false
+window/per_pixel_transparency/allowed=true
 
 [dotnet]
 

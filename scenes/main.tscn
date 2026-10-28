@@ -1,0 +1,28 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/Main.cs" id="1_main"]
+[ext_resource type="Script" path="res://scripts/DesktopWorld.cs" id="2_world"]
+[ext_resource type="Script" path="res://scripts/PetManager.cs" id="3_pets"]
+[ext_resource type="Script" path="res://scripts/MagicBook.cs" id="4_book"]
+[ext_resource type="Script" path="res://scripts/TrayIcon.cs" id="5_tray"]
+[ext_resource type="Script" path="res://scripts/DebugOverlay.cs" id="6_debug"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="DesktopWorld" type="Node2D" parent="."]
+script = ExtResource("2_world")
+
+[node name="PetManager" type="Node2D" parent="."]
+script = ExtResource("3_pets")
+
+[node name="UI" type="CanvasLayer" parent="."]
+script = ExtResource("4_book")
+
+[node name="TrayIcon" type="Node" parent="."]
+script = ExtResource("5_tray")
+
+[node name="DebugOverlay" type="CanvasLayer" parent="."]
+layer = 10
+visible = false
+script = ExtResource("6_debug")

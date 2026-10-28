@@ -1,86 +1,54 @@
-using Godot;
-using System;
-
+/// <summary>
+/// Behaviour states of a Capoo. The logic for each state lives in CapooController.Behavior.cs.
+/// </summary>
 public enum CapooState
 {
+	Appear,       // summon effect
 	Idle,
-	Walking,
-	Running,
-	Sleeping,
+	Walk,
+	Run,
+	Wild,         // sprint
+	React,        // one-shot reaction (hit, stackDown, ...) then resume
+	Pet,          // being rubbed by the cursor
+	Enjoy,        // after petting
 	Dragged,
-	Falling,
-	Petting,
+	Air,          // falling
+	Roll,         // thrown upwards
+	Land,
+	Dizzy,
+	Hop,          // small jump off a ledge or a stack
+	Hungry,       // waiting for food (bubble)
 	Eating,
-	Pooping,
-	Stacked,
-	Dizzy
+	Pooing,
+	WaitCleanPoo, // waiting for cleanup (bubble)
+	PooRemoving,
+	Sleepy,
+	Sleeping,
+	Waking,
+	Stacked,      // standing on another Capoo's head
+	Recycle
 }
 
-public partial class CapooStateMachine : Node
+public static class CapooStateExtensions
 {
-	private CapooState _currentState = CapooState.Idle;
-	private CapooState _previousState = CapooState.Idle;
+	/// <summary>Standing on the ground and free to start something new.</summary>
+	public static bool IsGroundIdle(this CapooState s) =>
+		s is CapooState.Idle or CapooState.Walk or CapooState.Run or CapooState.Wild or CapooState.Enjoy;
 
-	public CapooState CurrentState => _currentState;
-	public CapooState PreviousState => _previousState;
+	public static bool IsMoving(this CapooState s) =>
+		s is CapooState.Walk or CapooState.Run or CapooState.Wild;
 
-	public double StateTimer { get; private set; } = 0.0;
-	public double StateDuration { get; private set; } = 0.0;
+	public static bool IsAirborne(this CapooState s) =>
+		s is CapooState.Air or CapooState.Roll;
 
-	public event Action<CapooState, CapooState> OnStateChanged;
+	/// <summary>States where a long press may pick the Capoo up.</summary>
+	public static bool CanBeDragged(this CapooState s) =>
+		s is not (CapooState.Appear or CapooState.Recycle or CapooState.Pooing
+			or CapooState.Eating or CapooState.PooRemoving or CapooState.Dragged);
 
-	public override void _Process(double delta)
-	{
-		StateTimer += delta;
-	}
-
-	public bool CanTransitionTo(CapooState newState)
-	{
-		return newState switch
-		{
-			CapooState.Idle => _currentState != CapooState.Idle,
-			CapooState.Walking => _currentState is CapooState.Idle or CapooState.Running or CapooState.Walking,
-			CapooState.Running => _currentState is CapooState.Idle or CapooState.Walking or CapooState.Running,
-			CapooState.Sleeping => _currentState is CapooState.Idle,
-			CapooState.Dragged => _currentState is not (CapooState.Dragged or CapooState.Falling),
-			CapooState.Falling => _currentState is CapooState.Dragged or CapooState.Stacked,
-			CapooState.Petting => _currentState is CapooState.Idle or CapooState.Walking,
-			CapooState.Eating => _currentState is CapooState.Idle or CapooState.Walking,
-			CapooState.Pooping => _currentState is CapooState.Idle or CapooState.Walking,
-			CapooState.Stacked => _currentState is not CapooState.Dragged,
-			CapooState.Dizzy => _currentState is CapooState.Idle or CapooState.Walking,
-			_ => false
-		};
-	}
-
-	public bool TransitionTo(CapooState newState)
-	{
-		if (!CanTransitionTo(newState)) return false;
-
-		_previousState = _currentState;
-		_currentState = newState;
-		StateTimer = 0.0;
-		StateDuration = 0.0;
-		OnStateChanged?.Invoke(_previousState, _currentState);
-		return true;
-	}
-
-	public void SetStateDuration(double duration)
-	{
-		StateDuration = duration;
-	}
-
-	public bool IsStateTimerExpired()
-	{
-		return StateDuration > 0 && StateTimer >= StateDuration;
-	}
-
-	public void ForceState(CapooState state)
-	{
-		_previousState = _currentState;
-		_currentState = state;
-		StateTimer = 0.0;
-		StateDuration = 0.0;
-		OnStateChanged?.Invoke(_previousState, _currentState);
-	}
+	/// <summary>States where another Capoo may land on this one's head.</summary>
+	public static bool CanCarryStack(this CapooState s) =>
+		s is CapooState.Idle or CapooState.Walk or CapooState.Enjoy or CapooState.React
+			or CapooState.Stacked or CapooState.Sleepy or CapooState.Sleeping or CapooState.Hungry
+			or CapooState.Land or CapooState.Dizzy;
 }
