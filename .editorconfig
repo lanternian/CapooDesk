@@ -1,0 +1,45 @@
+# EditorConfig for Capoo Godot C# Project
+root = true
+
+[*.cs]
+indent_style = tab
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# Naming conventions (match existing codebase)
+dotnet_naming_rule.methods_should_be_pascal_case.severity = none
+dotnet_naming_rule.fields_should_be_camel_case.severity = none
+
+# var preferences
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+
+# Expression-bodied members
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+
+# Using directives
+dotnet_sort_system_directives_first = true
+
+[*.json]
+indent_style = tab
+indent_size = 4
+
+[*.gd]
+indent_style = tab
+indent_size = 4
+
+[*.tscn]
+indent_style = tab
+indent_size = 4
+
+[*.tres]
+indent_style = tab
+indent_size = 4
+
+[*.cfg]
+indent_style = tab
+indent_size = 4
