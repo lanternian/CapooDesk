@@ -14,10 +14,8 @@ public partial class DesktopWindow : Node
 
 	public enum TransparencyMode { Alpha, ColorKey }
 
-	// RGB(1,0,1): practically black so anti-aliased edges read as a dark outline,
-	// but pure-black art pixels are not keyed out.
-	private const uint ColorKeyRef = 0x00010001;
-	private static readonly Color ColorKeyColor = Color.Color8(1, 0, 1);
+	// Colour-key fallback: the cleared background is black.
+	private const uint ColorKeyRef = 0x00000000;
 
 	public IntPtr Hwnd { get; private set; }
 	public Vector2I Origin { get; private set; }
@@ -170,17 +168,11 @@ public partial class DesktopWindow : Node
 
 	private void ApplyTransparency()
 	{
-		if (Mode == TransparencyMode.Alpha)
-		{
-			GetViewport().TransparentBg = true;
-			DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.Transparent, true);
-		}
-		else
-		{
-			GetViewport().TransparentBg = false;
-			RenderingServer.SetDefaultClearColor(ColorKeyColor);
-			DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.Transparent, false);
-		}
+		// Both modes clear to transparent black. Alpha relies on DWM per-pixel alpha;
+		// ColorKey additionally keys out pure black, which also works on drivers that ignore
+		// the alpha channel (pure-black art pixels become click-through holes in that mode).
+		GetViewport().TransparentBg = true;
+		DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.Transparent, true);
 	}
 
 	public void FitToScreen(int screenIndex)
