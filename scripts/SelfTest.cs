@@ -164,7 +164,22 @@ public partial class SelfTest : Node
 		Check("click wakes a sleeping Capoo", d.State == CapooState.Waking, d.State.ToString());
 		await Wait(2.0);
 
-		// 9. Recycle everything.
+		// 9. UI: right-click menu and the three book tabs.
+		var book = GetNode<MagicBook>("/root/Main/UI");
+		book.OnPetRightClicked(b, Center(b));
+		await Wait(0.3);
+		await Capture("pet_menu");
+		book.ShowBook();
+		for (int tab = 0; tab < 3; tab++)
+		{
+			book.ShowTab(tab);
+			await Wait(0.5);
+			await Capture($"book_tab{tab}");
+		}
+		book.HideBook();
+		Check("book closes", !book.IsBookOpen);
+
+		// 10. Recycle everything.
 		Pets.RecycleAll();
 		await Wait(1.5);
 		Check("recycle removes all", Pets.Pets.Count == 0, Pets.Pets.Count.ToString());
