@@ -5,80 +5,65 @@ description: Use when working with Spine animations, CapooView, Capoo_Action.jso
 
 # Spine Animation in Capoo Project
 
-## Spine-Godot C# API
+Runtime: spine-godot **4.1** (custom Godot 4.2.1 mono build). Assets are Spine 4.1.23 JSON — do not upgrade the runtime.
+
+## Spine-Godot C# API (as used here)
 
 ```csharp
-// Core types
-SpineSprite              // Main Spine node, extends Node2D
-SpineBoneNode            // Attaches child nodes to Spine bones
-SpineSkeletonDataResource // Skeleton data (.res files)
-SpineAnimationState      // Controls animation playback
-
-// Key methods on SpineSprite
-spineSprite.GetSkeleton()
-spineSprite.GetAnimationState()
-spineSprite.SkeletonDataRes = GD.Load<SpineSkeletonDataResource>(path)
-
-// Key methods on SpineAnimationState
-animState.SetAnimation(track, animName, loop)  // Returns SpineTrackEntry
-animState.AddAnimation(track, animName, loop, delay)
-animState.ClearTrack(trackIndex)
-animState.SetEmptyAnimation(trackIndex, mixDuration)
-
-// Skeleton methods
-skeleton.FindBone("boneName")
-skeleton.SetSkinByName("skinName")
-skeleton.SetToSetupPose()
+sprite.SkeletonDataRes = GD.Load<SpineSkeletonDataResource>("res://assets/spine/body/capoo_basic_001.res");
+var state = sprite.GetAnimationState();
+state.SetAnimation(animName, loop, trackIndex);            // name first, then loop, then track
+state.AddAnimation(animName, delay, loop, trackIndex);
+state.ClearTrack(trackIndex);
+sprite.SkeletonDataRes.FindAnimation(name)?.GetDuration(); // animation length
+sprite.GetSkeleton().GetBounds();                           // AABB of the current pose, sprite-local
+sprite.GetGlobalBoneTransform("talk").Origin;               // bone position in global coords
+skeleton.SetSkinByName("poo_01"); skeleton.SetToSetupPose();
 ```
 
-## 13-Layer Component Architecture
+`.res` files (SpineSkeletonDataResource) are generated from `.spine-json` + `.atlas` by `batch_create_spine_resources.gd`.
 
-Each Capoo consists of layers attached to named bones:
+## Component layers (CapooView)
 
-| Component | Bone | Resource Dir |
+| Component | Bone | Resource dir |
 |-----------|------|-------------|
-| body | (root) | spine/body/ |
+| body | (the CapooView itself) | spine/body/ |
 | face | body_face_root | spine/face/ |
-| faceDecoration | mask | spine/face_decoration/ |
+| face_decoration | mask | spine/mask/ |
 | hat | hat | spine/hat/ |
 | clothes | clothes | spine/clothes/ |
-| back | back | spine/back/ |
-| rightHandItem | prop_r | spine/prop_r/ |
-| accTop | root | spine/acc/ |
-| accBody | root | spine/acc/ |
-| accBot | root | spine/acc/ |
+| back | back (behind the body when back_hierarchy == "0") | spine/back/ |
+| right_hand_item | prop_r | spine/prop_r/ |
+| capoo_acc_top/body/bot | root | spine/capoo_acc_top/, capoo_acc_body/, capoo_acc_bot/ |
 | mood | body_mood | spine/mood/ |
-| efxBot | root | spine/efx_bot/ |
-| efxTop | root | spine/efx_top/ |
-| efxAppear | root | spine/efx_appear/ |
+| efx_bot | root (behind the body) | spine/efx_bot/ |
+| efx_top | root | spine/efx_top/ |
+| efx_appears | root | spine/efx_appear/ |
 | talk | talk | spine/char_talk/ |
 | food | root | spine/food/ |
-| poo | root | spine/poo/ |
+| poo | root (skin poo_01) | spine/poo/ |
 
-## Animation Action JSON Schema
+Components are SpineSprites (scale 2.0) under SpineBoneNodes that follow body bones. Facing = sign of
+CapooView.Scale.X (the art faces left); the talk sprite is counter-flipped so "?" stays readable.
 
-Each action in Capoo_Action.json maps to multiple layers:
-```json
-{
-  "action_name": "idle_idle1",
-  "body": "idle_basic", "body_loop": "true",
-  "face": "emoji", "face_loop": "true",
-  "mood": "", "mood_loop": "",
-  "effectTop": "", "effectTop_loop": "",
-  "effectBot": "", "effectBot_loop": "",
-  "talk": "", "talk_loop": "",
-  "appear": "", "appear_loop": "",
-  "food": "", "food_loop": "",
-  "poo": "", "poo_loop": ""
-}
-```
+## Actions
 
-Empty string = don't change that layer.
+`Capoo_Action.json` (80 official) + `Capoo_Action_Extra.json` (ours: sleepy1, sleep1-2, wakeUp1-2, hungry1-2,
+waitCleanPooTalk, comfortable1-2, hop) — same schema, merged by CapooConfig into a dictionary.
 
-## Important Gotchas
+`CapooView.SetAnimation(action)` follows the original app:
+- body/face: set when non-empty
+- mood, effectTop, effectBot, talk: **empty = hide_all**, so bubbles and effects never linger
+- appear, food, poo: only touched when non-empty (hide them explicitly with `HideLayer(Layer.Food/Poo)`)
+- unknown action name → warning, returns false (never throws)
 
-- **Always call `ClearAnimation()` before `SetAnimation()`** to prevent track conflicts
-- `AddAnimation()` queues after current; use for animation chains
-- Component visibility: if a CapooInfo field is empty (""), that component is NOT created — don't try to access its animation state
-- Face animations include: emoji, delighted, sleep, happy, basic, eager, confidence, kawaii, thrilled, stunned, tired, angry, annoyed, dizzy, die, blankly, pleased, shy, blissful, like, flushed, beaten, tear, blood, full, chew, poo
-- Body animations include: idle_basic, walk_basic, run, sprint, roll, fall, jump_down, click, pet, prone, grasp, chew, poo
+`SetLayer(layer, anim, loop)` plays one raw layer animation (e.g. an extra "bump" on EffectBot).
+
+## Performance notes
+- Overlay sprites (mood, efx, talk, food, poo, appear) are frozen (`ProcessMode = Disabled`, hidden) two frames
+  after they go to hide_all, and woken by the next animation on that layer.
+- Book thumbnails are CapooViews with processing disabled until hovered.
+
+## Durations (body, capoo_basic_001)
+click 1.5, idle_basic 2, walk_basic 0.83, run 0.4, sprint 0.43, roll 0.67, jump_down 0.67, jump_up 0.33,
+pet 2, poo 2.33, grasp 2, prone 1, chew 0.33; `fall` is a pose (0 s).

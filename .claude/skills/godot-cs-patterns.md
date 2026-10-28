@@ -62,11 +62,18 @@ GetGlobalMousePosition();
 Input.GetLastMouseVelocity();
 ```
 
-## Display Server (for desktop pet)
+## Desktop overlay (DesktopWindow.cs)
 ```csharp
-DisplayServer.WindowSetMousePassthrough(vector2Array);
-DisplayServer.ScreenGetSize(screenIndex);
+var window = DesktopWindow.Instance;
+window.CursorWorld;                  // cursor in world coords, polled every frame (works while click-through)
+window.AddHitTester(p => ...);       // world point -> should the window take clicks here?
+window.RegisterInteractive(control); // UI that must receive clicks while visible
+window.ForceOpaque = true;           // while dragging something
+DisplayServer.ScreenGetUsableRect(screen); // work area (the floor is the taskbar top)
 ```
+Click-through = WS_EX_LAYERED|WS_EX_TRANSPARENT toggled by hit testing. Godot rewrites GWL_EXSTYLE whenever its
+window flags change, so DesktopWindow re-applies its styles (Maintain()). Don't use WindowSetMousePassthrough: it
+clips rendering to the region.
 
 ## Scene Instancing (when needed)
 ```csharp
@@ -86,4 +93,10 @@ parent.AddChild(instance);
 - Godot 4 uses `Callable.From()` for signal connections, NOT old signal string syntax
 - Use `GD.Load<T>()` not `ResourceLoader.Load()` for resources
 - CollisionPolygon2D vertices are in LOCAL coordinates
-- `InputPickable = true` required for `mouse_entered`/`mouse_exited` signals on PhysicsBody2D
+- Never declare global-namespace classes named like Godot types (`Node2D`, `CharacterBody2D`, ...): they silently
+  shadow `using Godot;`. Likewise `Mutex` is ambiguous between Godot and System.Threading.
+- Partial classes may span files (CapooController.cs / .Behavior.cs / .Interaction.cs)
+- Pet mouse input goes through PetManager (`HandleLeftPress/Release`), not `Input.IsActionJustPressed` — otherwise
+  every pet reacts to the same click
+- Nodes created in code only get `_Ready` on AddChild if the parent is already in the tree: add first, then configure
+  Spine children

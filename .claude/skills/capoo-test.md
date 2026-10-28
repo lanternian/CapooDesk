@@ -5,46 +5,42 @@ description: Use when writing tests, verifying features, running benchmarks, or 
 
 # Capoo Testing & Verification
 
-## 3-Layer Verification System
+Godot binary: `D:/app/Godot/godot-editor-windows-mono/godot-4.1-4.2.1-stable-mono.exe` (on PATH as `godot4`).
+Everything after `--` is a user argument read by Main / AppSettings / DesktopWindow.
 
-### L1: dotnet build (automated)
+## L1: build
 ```bash
-dotnet build    # Must pass with 0 errors
+dotnet build    # must be 0 errors, 0 warnings
 ```
 
-### L2: Programmatic Tests (automated via Godot headless)
+## L2: scripted self-tests (SelfTest.cs, virtual cursor — never moves the real mouse)
 ```bash
-godot4 --path D:/program/Godot/capoo --headless --scene res://tests/test_runner.tscn
+godot4 --path D:/program/Godot/capoo -- --test --selftest     # click-through, hit, petting, drag/throw, stacking, bump,
+                                                              # hungry/eat, poo/clean, nap/wake, accessory hit-test,
+                                                              # book UI captures, away->sleep->wake, recycle
+godot4 --path D:/program/Godot/capoo -- --test --windowtest   # needs a top-level window titled "CapooTestWindow":
+                                                              # platform detection, landing, edge walk, carry, fall on close
+godot4 --path D:/program/Godot/capoo -- --test --perftest     # CPU % of one core for 0/1/5/10/20 pets
 ```
+- Output lines `[selftest] PASS|FAIL ...`, summary `[selftest] done: N passed, M failed`; exit code 1 on failure.
+- Captures: `%APPDATA%/CapooDesk/selftest_NN_<name>.png` (the viewport only, not the user's screen).
+- `--test` uses `user://settings_test.json` instead of the real settings. Put `"HideOnFullscreen": false` there when a
+  fullscreen app is in front, otherwise the pets are auto-hidden.
+- Other flags: `--debug-overlay` (outlines, states, platforms, FPS), `--spawn=N`, `--tmode=alpha|colorkey`.
+- Test window: a PowerShell WinForms form with `TopMost` + `WS_EX_NOACTIVATE` (doesn't steal focus).
 
-Test categories:
-- **Config loading**: CapooInfo 126 entries, CapooAction 80 entries, all fields valid
-- **State machine**: valid transitions accepted, invalid transitions rejected
-- **Needs system**: timer increments, thresholds trigger correct states
-- **Animation mapping**: all action names resolve to valid CapooAction entries
+`Performance.Monitor.TimeProcess` reports the whole frame period here (≈16.7 ms at 60 fps even with 0 pets) —
+measure real CPU with `Process.TotalProcessorTime` (see SelfTest.RunPerf).
 
-Results written to `tests/results.json`.
-
-### L3: Screenshot Visual Analysis (semi-automated)
+## L3: exported build
 ```bash
-# Launch Godot, wait, screenshot
-godot4 --path D:/program/Godot/capoo &
-# PowerShell screenshot + analyze_image MCP tool
+godot4 --headless --path D:/program/Godot/capoo --export-release "CapooDesk" D:/program/Godot/build/CapooDesk/CapooDesk.exe
+D:/program/Godot/build/CapooDesk/CapooDesk.exe -- --test --selftest
 ```
+New asset files (sounds, images) must be imported before running from the CLI; `--export-pack "CapooDesk" <tmp>.pck`
+performs the import.
 
-## Performance Benchmarks
-Target: 60 FPS with 12 Capoos all animating
-
-Monitor via (from test.cs):
-```csharp
-Performance.GetMonitor(Performance.Monitor.TimeFps);
-Performance.GetMonitor(Performance.Monitor.TimeProcess);
-Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess);
-Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame);
-```
-
-## Items Requiring Human Confirmation
-- Window transparency (Win32 color-key on actual desktop)
-- Drag feel (mouse follow latency, throw physics feel)
-- Animation smoothness (visual 60fps vs 30fps)
-- Mouse passthrough regions (clickable on Capoo, passthrough on transparent)
+## Needs a human
+- Drag/throw feel, rubbing threshold, walk speed vs. foot animation
+- Tray icon menu (real right-click on the notification area)
+- Multi-monitor and DPI changes
