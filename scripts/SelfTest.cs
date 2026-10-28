@@ -46,6 +46,7 @@ public partial class SelfTest : Node
 		catch (Exception e)
 		{
 			GD.PrintErr($"[selftest] crashed: {e}");
+			GD.PrintErr(e.StackTrace ?? "");
 			failed++;
 		}
 		GD.Print($"[selftest] done: {passed} passed, {failed} failed");
@@ -193,6 +194,7 @@ public partial class SelfTest : Node
 			await Wait(0.5);
 			await Capture($"book_tab{tab}");
 		}
+		CheckBookLayout(book);
 		book.HideBook();
 		Check("book closes", !book.IsBookOpen);
 
@@ -216,6 +218,22 @@ public partial class SelfTest : Node
 
 		// 12. Summon and recycle: body, face and accessories come and go together.
 		await CheckSummonSync();
+
+		// 13. The book on a 1080p screen (100% zoom) as well.
+		Vector2I fullSize = Window.Size;
+		Window.SetTestSize(new Vector2I(1920, 1040));
+		await Wait(0.4);
+		book.ShowBook();
+		for (int tab = 0; tab < 3; tab++)
+		{
+			book.ShowTab(tab);
+			await Wait(0.4);
+			await Capture($"book_1080p_tab{tab}");
+		}
+		CheckBookLayout(book);
+		book.HideBook();
+		Window.SetTestSize(fullSize);
+		await Wait(0.3);
 	}
 
 	/// <summary>Colours that identify the three layers of one Capoo: the blue body, the pink
@@ -250,6 +268,49 @@ public partial class SelfTest : Node
 			}
 		}
 		return count;
+	}
+
+	/// <summary>Nothing on the book pages may overlap, and nothing may leave the paper.
+	/// Also checks the book on a 1080p screen, where it has to fit as well.</summary>
+	private void CheckBookLayout(MagicBook book)
+	{
+		var overlaps = new List<string>();
+		var outside = new List<string>();
+		for (int tab = 0; tab < 3; tab++)
+		{
+			var rects = book.GetLayoutRects(tab);
+			// The parts of a page must not sit on top of each other.
+			for (int i = 0; i < rects.Count; i++)
+			{
+				for (int j = i + 1; j < rects.Count; j++)
+				{
+					if (!rects[i].rect.Intersects(rects[j].rect)) continue;
+					overlaps.Add($"tab{tab} {rects[i].name}/{rects[j].name}");
+				}
+			}
+			// Everything that belongs to a page has to stay on the paper.
+			foreach (var (name, rect) in rects)
+			{
+				if (name.StartsWith("tab") || name == "close") continue; // the tabs stick out on purpose
+				bool onLeft = MagicBook.LeftPageArea.Grow(2).Encloses(rect);
+				bool onRight = MagicBook.RightPageArea.Grow(2).Encloses(rect);
+				if (!onLeft && !onRight) outside.Add($"tab{tab} {name} {rect}");
+			}
+		}
+		Check("book: nothing overlaps", overlaps.Count == 0, string.Join(", ", overlaps));
+		Check("book: everything stays on the paper", outside.Count == 0, string.Join(", ", outside));
+
+		// The book has to fit on a 1080p screen as well.
+		Vector2 size = book.BookRect.Size;
+		Check("book: fits on a 1080p screen", size.X <= 1920 && size.Y <= 1040, size.ToString());
+
+		// The default tooltip is a dark box, which is unreadable with the brown text.
+		var theme = UiTheme.Get();
+		var tooltipBox = theme.GetStylebox("panel", "TooltipPanel") as StyleBoxFlat;
+		var tooltipInk = theme.GetColor("font_color", "TooltipLabel");
+		Check("book: tooltips are readable",
+			tooltipBox != null && tooltipBox.BgColor.R > 0.8f && tooltipInk.R < 0.6f,
+			$"{tooltipBox?.BgColor} {tooltipInk}");
 	}
 
 	/// <summary>Summons a Capoo with a blue body, a pink face and a yellow helmet and watches
@@ -481,6 +542,22 @@ public partial class SelfTest : Node
 			await Capture($"recycle_{i * 5:000}");
 			await Wait(0.05);
 		}
+
+		// The book on its very first frame.
+		var book = GetNode<MagicBook>("/root/Main/UI");
+		book.ShowBook();
+		await Capture("book_first_frame");
+		await Wait(0.1);
+		await Capture("book_0.1s");
+		await Wait(0.5);
+		await Capture("book_0.6s");
+
+		// The tooltip of a page tab (the real mouse never moves, the event is injected).
+		Vector2 tab = book.FirstTab.GetGlobalRect().GetCenter();
+		Input.ParseInputEvent(new InputEventMouseMotion { Position = tab, GlobalPosition = tab });
+		await Wait(0.9);
+		await Capture("book_tooltip");
+		book.HideBook();
 	}
 
 	private async Task RunLoadTest()

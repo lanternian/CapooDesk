@@ -92,9 +92,49 @@ public static class UiTheme
 		// Popup panels.
 		theme.SetStylebox("panel", "PanelContainer", PanelBox());
 
+		// Tooltips: the default dark box with brown text on it is unreadable.
+		theme.SetStylebox("panel", "TooltipPanel", TooltipBox());
+		theme.SetColor("font_color", "TooltipLabel", Ink);
+		theme.SetFontSize("font_size", "TooltipLabel", 16);
+
 		theme.SetConstant("separation", "VBoxContainer", 8);
 		theme.SetConstant("separation", "HBoxContainer", 8);
 		return theme;
+	}
+
+	/// <summary>The style of a chosen option: a deeper gold with a strong border, so it is
+	/// clearly different from the buttons next to it.</summary>
+	public static StyleBoxFlat SelectedBox()
+	{
+		var box = new StyleBoxFlat
+		{
+			BgColor = new Color("e0a52c"),
+			BorderColor = new Color("8a6216"),
+			ContentMarginLeft = 10,
+			ContentMarginRight = 10,
+			ContentMarginTop = 4,
+			ContentMarginBottom = 4
+		};
+		box.SetBorderWidthAll(2);
+		box.SetCornerRadiusAll(16);
+		return box;
+	}
+
+	/// <summary>A light paper box for the tooltips.</summary>
+	private static StyleBoxFlat TooltipBox()
+	{
+		var box = new StyleBoxFlat
+		{
+			BgColor = Paper,
+			BorderColor = PaperEdge,
+			ContentMarginLeft = 10,
+			ContentMarginRight = 10,
+			ContentMarginTop = 4,
+			ContentMarginBottom = 4
+		};
+		box.SetBorderWidthAll(2);
+		box.SetCornerRadiusAll(8);
+		return box;
 	}
 
 	/// <summary>A small rounded square icon drawn in code.</summary>

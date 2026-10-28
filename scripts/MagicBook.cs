@@ -16,9 +16,23 @@ public partial class MagicBook : CanvasLayer
 	private const int DeskRowsPerPage = 8;
 	private const float ButtonBaseScale = 0.55f;
 
-	// Writable page areas inside ui_pop_collection_01.png (954x694).
-	private static readonly Rect2 LeftPage = new Rect2(96, 150, 345, 385);
-	private static readonly Rect2 RightPage = new Rect2(478, 150, 345, 385);
+	// Writable page areas inside ui_pop_collection_01.png (954x694). The paper runs out at
+	// y=500 (below that the pages are rolled up) and the folded corner in the top right of
+	// the right page starts at x=815, so the right column has to stop before that.
+	private static readonly Rect2 LeftPage = new Rect2(96, 150, 345, 350);
+	private static readonly Rect2 RightPage = new Rect2(478, 150, 345, 350);
+	private const float FoldLeft = 815f;
+
+	// Card grid inside one page.
+	private const float CardPitchX = 112f;
+	private const float CardPitchY = 94f;
+	private const float CardWidth = 100f;
+	private const float CardHeight = 92f;
+	private const float CardTop = 28f;
+
+	// The strip at the bottom of a page: the page arrows and the page number.
+	private const float BottomBarY = 468f;
+	private const float ArrowScale = 0.75f;
 
 	private static SettingsData Settings => AppSettings.Instance.Data;
 
@@ -40,14 +54,18 @@ public partial class MagicBook : CanvasLayer
 	private Control summonCards;
 	private Label summonPageLabel;
 	private Label summonStatus;
+	private readonly TextureButton[] summonArrows = new TextureButton[2];
 
 	// Desk tab
 	private int deskPage;
 	private VBoxContainer deskList;
 	private Label deskPageLabel;
 	private Label deskCount;
+	private readonly TextureButton[] deskArrows = new TextureButton[2];
 
 	// Settings tab
+	private VBoxContainer settingsLeft;
+	private VBoxContainer settingsRight;
 	private readonly List<Action> settingRefreshers = new List<Action>();
 	private bool refreshingSettings;
 	private Action pendingApply;
@@ -192,7 +210,11 @@ public partial class MagicBook : CanvasLayer
 	private void LayoutForScreen()
 	{
 		Vector2 screen = DesktopWindow.Instance.Size;
-		uiScale = Mathf.Clamp(screen.Y / 1300f, 0.6f, 1.3f);
+		// Never scale the book up or down on a normal screen: a scaled Control turns the
+		// text blurry, and on a 1080p screen the small fonts became unreadable. Only shrink
+		// it when the screen is really too small for it.
+		uiScale = Mathf.Min(1f, (screen.Y - 12f) / book.Size.Y);
+		uiScale = Mathf.Max(uiScale, 0.6f);
 
 		book.Scale = new Vector2(uiScale, uiScale);
 		book.Position = ((screen - book.Size * uiScale) / 2).Floor();
@@ -236,9 +258,9 @@ public partial class MagicBook : CanvasLayer
 			MouseFilter = Control.MouseFilterEnum.Stop,
 			Size = background.GetSize()
 		};
-		book.AddChild(new TextureRect { Texture = background, MouseFilter = Control.MouseFilterEnum.Ignore });
 		root.AddChild(book);
 
+		// The page tabs peek out from behind the cover, so they go in before the paper.
 		string[] tips = { "召唤咖波", "桌面上的咖波", "设置" };
 		for (int i = 0; i < tabs.Length; i++)
 		{
@@ -246,7 +268,7 @@ public partial class MagicBook : CanvasLayer
 			tabs[i] = new TextureButton
 			{
 				TextureNormal = UiTheme.Tex($"tab_menu_{TabImages[i]}_n"),
-				Position = new Vector2(836, 112 + i * 68),
+				Position = new Vector2(836, 96 + i * 66),
 				TooltipText = tips[i],
 				MouseDefaultCursorShape = Control.CursorShape.PointingHand
 			};
@@ -258,10 +280,13 @@ public partial class MagicBook : CanvasLayer
 			book.AddChild(tabs[i]);
 		}
 
+		book.AddChild(new TextureRect { Texture = background, MouseFilter = Control.MouseFilterEnum.Ignore });
+
+		// The close button sits above the right page, clear of the folded corner.
 		var close = new TextureButton
 		{
 			TextureNormal = UiTheme.Tex("btn_close_co"),
-			Position = new Vector2(780, 96),
+			Position = new Vector2(742, 58),
 			TooltipText = "合上",
 			MouseDefaultCursorShape = Control.CursorShape.PointingHand
 		};
@@ -309,6 +334,7 @@ public partial class MagicBook : CanvasLayer
 			TextureDisabled = UiTheme.Tex("btn_arrow_gy_s"),
 			FlipH = left,
 			Position = position,
+			Scale = Vector2.One * ArrowScale,
 			MouseDefaultCursorShape = Control.CursorShape.PointingHand
 		};
 		arrow.Pressed += () =>
@@ -325,30 +351,32 @@ public partial class MagicBook : CanvasLayer
 	{
 		var page = NewPage();
 
-		var title = UiTheme.MakeLabel("咖波图鉴", 26);
+		var title = UiTheme.MakeLabel("咖波图鉴", 25);
 		title.Position = LeftPage.Position + new Vector2(8, 0);
 		page.AddChild(title);
 
-		var hint = UiTheme.MakeLabel("点一下就能召唤到桌面上", 15, UiTheme.InkLight);
-		hint.Position = LeftPage.Position + new Vector2(130, 10);
+		var hint = UiTheme.MakeLabel("点一下就能召唤到桌面上", 16, UiTheme.InkLight);
+		hint.Position = LeftPage.Position + new Vector2(112, 6);
 		page.AddChild(hint);
 
-		summonStatus = UiTheme.MakeLabel("", 16, UiTheme.InkLight);
-		summonStatus.Position = RightPage.Position + new Vector2(8, 8);
-		summonStatus.Size = new Vector2(RightPage.Size.X - 16, 24);
+		// Right aligned, but the folded corner of the page keeps its width.
+		summonStatus = UiTheme.MakeLabel("", 17, UiTheme.InkLight);
+		summonStatus.Position = RightPage.Position + new Vector2(8, 2);
+		summonStatus.Size = new Vector2(FoldLeft - RightPage.Position.X - 20, 24);
 		summonStatus.HorizontalAlignment = HorizontalAlignment.Right;
 		page.AddChild(summonStatus);
 
 		summonCards = new Control { MouseFilter = Control.MouseFilterEnum.Ignore };
 		page.AddChild(summonCards);
 
-		float bottom = LeftPage.End.Y - 30;
-		page.AddChild(Arrow(true, new Vector2(LeftPage.Position.X + 4, bottom), () => FlipSummon(-1)));
-		page.AddChild(Arrow(false, new Vector2(RightPage.End.X - 34, bottom), () => FlipSummon(1)));
+		summonArrows[0] = Arrow(true, new Vector2(LeftPage.Position.X + 4, BottomBarY), () => FlipSummon(-1));
+		summonArrows[1] = Arrow(false, new Vector2(RightPage.End.X - 38, BottomBarY), () => FlipSummon(1));
+		page.AddChild(summonArrows[0]);
+		page.AddChild(summonArrows[1]);
 
 		summonPageLabel = UiTheme.MakeLabel("", 16, UiTheme.InkLight);
-		summonPageLabel.Position = new Vector2((LeftPage.End.X + RightPage.Position.X) / 2 - 50, bottom + 6);
-		summonPageLabel.Size = new Vector2(100, 24);
+		summonPageLabel.Position = new Vector2(LeftPage.Position.X + 124, BottomBarY + 6);
+		summonPageLabel.Size = new Vector2(100, 20);
 		summonPageLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		page.AddChild(summonPageLabel);
 		return page;
@@ -367,6 +395,10 @@ public partial class MagicBook : CanvasLayer
 		ClearChildren(summonCards);
 		summonPageLabel.Text = $"{summonSpread + 1} / {SpreadCount}";
 		UpdateSummonStatus();
+		// A single spread has nothing to flip to.
+		bool single = SpreadCount <= 1;
+		summonArrows[0].Disabled = single;
+		summonArrows[1].Disabled = single;
 
 		for (int slot = 0; slot < CardsPerSpread; slot++)
 		{
@@ -374,7 +406,7 @@ public partial class MagicBook : CanvasLayer
 			if (index >= config.infos.Count) break;
 			Rect2 side = slot < CardsPerSide ? LeftPage : RightPage;
 			int local = slot % CardsPerSide;
-			var position = side.Position + new Vector2(8 + (local % CardColumns) * 112, 40 + (local / CardColumns) * 106);
+			var position = side.Position + new Vector2(8 + (local % CardColumns) * CardPitchX, CardTop + (local / CardColumns) * CardPitchY);
 			MakeCard(index, position, summonCards);
 		}
 	}
@@ -385,18 +417,17 @@ public partial class MagicBook : CanvasLayer
 		var cell = new Control
 		{
 			Position = position,
-			Size = new Vector2(108, 104),
+			Size = new Vector2(CardWidth, CardHeight),
 			MouseFilter = Control.MouseFilterEnum.Stop,
-			MouseDefaultCursorShape = Control.CursorShape.PointingHand,
-			TooltipText = info.name
+			MouseDefaultCursorShape = Control.CursorShape.PointingHand
 		};
 		parent.AddChild(cell); // in the tree first, so the Spine preview gets _Ready immediately
 
 		var card = new TextureRect
 		{
 			Texture = UiTheme.Tex("box_pic_wh"),
-			Position = new Vector2(12, 0),
-			Size = new Vector2(84, 88),
+			Position = new Vector2(14, 0),
+			Size = new Vector2(72, 75),
 			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
 			StretchMode = TextureRect.StretchModeEnum.Scale,
 			MouseFilter = Control.MouseFilterEnum.Ignore
@@ -405,17 +436,20 @@ public partial class MagicBook : CanvasLayer
 
 		var clip = new Control
 		{
-			Position = new Vector2(14, 3),
-			Size = new Vector2(80, 82),
+			Position = new Vector2(16, 3),
+			Size = new Vector2(68, 69),
 			ClipContents = true,
 			MouseFilter = Control.MouseFilterEnum.Ignore
 		};
 		cell.AddChild(clip);
 
-		var preview = new CapooView(index) { Position = new Vector2(40, 76) };
+		var preview = new CapooView(index) { Position = new Vector2(35, 67) };
 		clip.AddChild(preview);
-		preview.SetPetScale(0.17f);
+		preview.SetPetScale(0.14f);
 		preview.SetAnimation("idle_idle1");
+		// Spine only fills the mesh while the sprite is visible, so a fresh preview would
+		// show up without face and hat for a frame or two.
+		preview.RefreshPose();
 		// Static thumbnail until hovered: let the pose settle, then stop animating.
 		GetTree().CreateTimer(0.2).Timeout += () =>
 		{
@@ -423,9 +457,9 @@ public partial class MagicBook : CanvasLayer
 				preview.ProcessMode = ProcessModeEnum.Disabled;
 		};
 
-		var name = UiTheme.MakeLabel(info.name, 13);
-		name.Position = new Vector2(0, 86);
-		name.Size = new Vector2(108, 18);
+		var name = UiTheme.MakeLabel(info.name, 14);
+		name.Position = new Vector2(0, 76);
+		name.Size = new Vector2(CardWidth, 16);
 		name.HorizontalAlignment = HorizontalAlignment.Center;
 		name.ClipText = true;
 		cell.AddChild(name);
@@ -435,11 +469,13 @@ public partial class MagicBook : CanvasLayer
 			card.Texture = UiTheme.Tex("box_pic_ye");
 			preview.ProcessMode = ProcessModeEnum.Inherit;
 			preview.SetAnimation("idle_idle2");
+			preview.RefreshPose();
 		};
 		cell.MouseExited += () =>
 		{
 			card.Texture = UiTheme.Tex("box_pic_wh");
 			preview.SetAnimation("idle_idle1");
+			preview.RefreshPose();
 			preview.ProcessMode = ProcessModeEnum.Disabled;
 		};
 		cell.GuiInput += e =>
@@ -467,24 +503,26 @@ public partial class MagicBook : CanvasLayer
 	{
 		var page = NewPage();
 
-		var title = UiTheme.MakeLabel("桌面上的咖波", 26);
+		var title = UiTheme.MakeLabel("桌面上的咖波", 25);
 		title.Position = LeftPage.Position + new Vector2(8, 0);
 		page.AddChild(title);
 
-		deskList = new VBoxContainer { Position = LeftPage.Position + new Vector2(8, 46), Size = new Vector2(LeftPage.Size.X - 16, 290) };
+		deskList = new VBoxContainer { Position = LeftPage.Position + new Vector2(8, 38), Size = new Vector2(LeftPage.Size.X - 16, 268) };
 		deskList.AddThemeConstantOverride("separation", 4);
 		page.AddChild(deskList);
 
-		float bottom = LeftPage.End.Y - 30;
-		page.AddChild(Arrow(true, new Vector2(LeftPage.Position.X + 4, bottom), () => FlipDesk(-1)));
-		page.AddChild(Arrow(false, new Vector2(LeftPage.End.X - 34, bottom), () => FlipDesk(1)));
+		deskArrows[0] = Arrow(true, new Vector2(LeftPage.Position.X + 4, BottomBarY), () => FlipDesk(-1));
+		deskArrows[1] = Arrow(false, new Vector2(RightPage.End.X - 38, BottomBarY), () => FlipDesk(1));
+		page.AddChild(deskArrows[0]);
+		page.AddChild(deskArrows[1]);
+
 		deskPageLabel = UiTheme.MakeLabel("", 16, UiTheme.InkLight);
-		deskPageLabel.Position = new Vector2(LeftPage.GetCenter().X - 50, bottom + 6);
-		deskPageLabel.Size = new Vector2(100, 24);
+		deskPageLabel.Position = new Vector2(LeftPage.Position.X + 124, BottomBarY + 6);
+		deskPageLabel.Size = new Vector2(100, 20);
 		deskPageLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		page.AddChild(deskPageLabel);
 
-		var right = new VBoxContainer { Position = RightPage.Position + new Vector2(8, 0), Size = new Vector2(RightPage.Size.X - 16, RightPage.Size.Y) };
+		var right = new VBoxContainer { Position = RightPage.Position + new Vector2(8, 0), Size = new Vector2(FoldLeft - RightPage.Position.X - 20, RightPage.Size.Y) };
 		right.AddThemeConstantOverride("separation", 10);
 		page.AddChild(right);
 
@@ -507,9 +545,9 @@ public partial class MagicBook : CanvasLayer
 			"· 右键咖波：打开它的小菜单\n" +
 			"· 扔到别的咖波头上可以叠罗汉\n" +
 			"· 咖波可以站在窗口顶上散步\n" +
-			"· 你离开电脑一会儿，它们会睡着", 16, UiTheme.InkLight);
+			"· 你离开电脑一会儿，它们会睡着", 17, UiTheme.InkLight);
 		help.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-		help.CustomMinimumSize = new Vector2(RightPage.Size.X - 16, 0);
+		help.CustomMinimumSize = new Vector2(FoldLeft - RightPage.Position.X - 20, 0);
 		right.AddChild(help);
 		return page;
 	}
@@ -528,11 +566,14 @@ public partial class MagicBook : CanvasLayer
 		deskPage = Math.Clamp(deskPage, 0, pageCount - 1);
 		deskPageLabel.Text = $"{deskPage + 1} / {pageCount}";
 		deskCount.Text = $"桌面上 {pets.Count} / {Settings.MaxPets} 只";
+		// A single page has nothing to flip to.
+		deskArrows[0].Disabled = pageCount <= 1;
+		deskArrows[1].Disabled = pageCount <= 1;
 
 		ClearChildren(deskList);
 		if (pets.Count == 0)
 		{
-			deskList.AddChild(UiTheme.MakeLabel("还没有咖波，去图鉴里召唤一只吧", 16, UiTheme.InkLight));
+			deskList.AddChild(UiTheme.MakeLabel("还没有咖波，去图鉴里召唤一只吧", 17, UiTheme.InkLight));
 			return;
 		}
 
@@ -540,7 +581,7 @@ public partial class MagicBook : CanvasLayer
 		{
 			var pet = pets[i];
 			var row = new HBoxContainer();
-			var name = UiTheme.MakeLabel($"{i + 1}. {pet.DisplayName}", 17);
+			var name = UiTheme.MakeLabel($"{i + 1}. {pet.DisplayName}", 18);
 			name.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			name.ClipText = true;
 			row.AddChild(name);
@@ -576,9 +617,10 @@ public partial class MagicBook : CanvasLayer
 		var leftTitle = UiTheme.MakeLabel("外观与窗口", 24);
 		leftTitle.Position = LeftPage.Position + new Vector2(8, 0);
 		page.AddChild(leftTitle);
-		var left = new VBoxContainer { Position = LeftPage.Position + new Vector2(8, 42), Size = new Vector2(LeftPage.Size.X - 16, 330) };
-		left.AddThemeConstantOverride("separation", 6);
+		var left = new VBoxContainer { Position = LeftPage.Position + new Vector2(8, 34), Size = new Vector2(LeftPage.Size.X - 16, 300) };
+		left.AddThemeConstantOverride("separation", 4);
 		page.AddChild(left);
+		settingsLeft = left;
 
 		AddSlider(left, "咖波大小", 0.25, 1.0, 0.05, s => s.PetScale, (s, v) => s.PetScale = (float)v, v => $"{v * 100:0}%");
 		AddSlider(left, "最多几只", 1, 50, 1, s => s.MaxPets, (s, v) => s.MaxPets = (int)v, v => $"{v:0} 只");
@@ -599,9 +641,12 @@ public partial class MagicBook : CanvasLayer
 		var rightTitle = UiTheme.MakeLabel("咖波的习惯", 24);
 		rightTitle.Position = RightPage.Position + new Vector2(8, 0);
 		page.AddChild(rightTitle);
-		var right = new VBoxContainer { Position = RightPage.Position + new Vector2(8, 42), Size = new Vector2(RightPage.Size.X - 16, 330) };
-		right.AddThemeConstantOverride("separation", 6);
+		// The column stops before the folded corner of the page.
+		float rightWidth = FoldLeft - RightPage.Position.X - 20;
+		var right = new VBoxContainer { Position = RightPage.Position + new Vector2(8, 34), Size = new Vector2(rightWidth, 300) };
+		right.AddThemeConstantOverride("separation", 4);
 		page.AddChild(right);
+		settingsRight = right;
 
 		AddChoice(right, "饿/便便", new[] { "关", "少", "中", "多" }, s => s.CareLevel, (s, i) => s.CareLevel = i);
 		AddCheck(right, "会睡觉", s => s.SleepEnabled, (s, v) => s.SleepEnabled = v);
@@ -633,8 +678,8 @@ public partial class MagicBook : CanvasLayer
 		Func<SettingsData, double> get, Action<SettingsData, double> set, Func<double, string> format)
 	{
 		var row = new HBoxContainer();
-		var label = UiTheme.MakeLabel(text);
-		label.CustomMinimumSize = new Vector2(120, 0);
+		var label = UiTheme.MakeLabel(text, 16);
+		label.CustomMinimumSize = new Vector2(96, 0);
 		row.AddChild(label);
 		var slider = new HSlider
 		{
@@ -647,7 +692,7 @@ public partial class MagicBook : CanvasLayer
 		};
 		row.AddChild(slider);
 		var value = UiTheme.MakeLabel("", 16, UiTheme.InkLight);
-		value.CustomMinimumSize = new Vector2(64, 0);
+		value.CustomMinimumSize = new Vector2(56, 0);
 		value.HorizontalAlignment = HorizontalAlignment.Right;
 		row.AddChild(value);
 
@@ -670,8 +715,8 @@ public partial class MagicBook : CanvasLayer
 	private void AddChoice(VBoxContainer box, string text, string[] options, Func<SettingsData, int> get, Action<SettingsData, int> set)
 	{
 		var row = new HBoxContainer();
-		var label = UiTheme.MakeLabel(text);
-		label.CustomMinimumSize = new Vector2(120, 0);
+		var label = UiTheme.MakeLabel(text, 16);
+		label.CustomMinimumSize = new Vector2(96, 0);
 		row.AddChild(label);
 		var group = new ButtonGroup();
 		var buttons = new List<Button>();
@@ -683,9 +728,11 @@ public partial class MagicBook : CanvasLayer
 				Text = options[i],
 				ToggleMode = true,
 				ButtonGroup = group,
-				CustomMinimumSize = new Vector2(48, 0),
+				CustomMinimumSize = new Vector2(38, 0),
 				MouseDefaultCursorShape = Control.CursorShape.PointingHand
 			};
+			// A picked option has to stand out from the others.
+			button.AddThemeStyleboxOverride("pressed", UiTheme.SelectedBox());
 			button.Toggled += on =>
 			{
 				if (on && !refreshingSettings) AppSettings.Instance.Apply(s => set(s, index));
@@ -716,6 +763,60 @@ public partial class MagicBook : CanvasLayer
 		else if (currentTab == 0) UpdateSummonStatus();
 		else RefreshDesk();
 	}
+
+	// ---- Layout check (self-test) ----
+
+	/// <summary>The boxes the book fills on one page, in book coordinates. The self-test
+	/// uses them to check that nothing overlaps and that nothing leaves the paper.</summary>
+	public List<(string name, Rect2 rect)> GetLayoutRects(int tab)
+	{
+		var rects = new List<(string, Rect2)>();
+		for (int i = 0; i < tabs.Length; i++)
+			rects.Add(($"tab{i}", new Rect2(tabs[i].Position, tabs[i].Size * tabs[i].Scale)));
+		rects.Add(("close", new Rect2(742, 58, 58, 56)));
+
+		if (tab == 0)
+		{
+			rects.Add(("status", new Rect2(summonStatus.Position, summonStatus.Size)));
+			rects.Add(("page", new Rect2(summonPageLabel.Position, summonPageLabel.Size)));
+			for (int i = 0; i < summonArrows.Length; i++)
+				rects.Add(($"arrow{i}", new Rect2(summonArrows[i].Position, summonArrows[i].Size * summonArrows[i].Scale)));
+			for (int i = 0; i < CardsPerSpread; i++)
+			{
+				Rect2 side = i < CardsPerSide ? LeftPage : RightPage;
+				int local = i % CardsPerSide;
+				var position = side.Position + new Vector2(8 + (local % CardColumns) * CardPitchX, CardTop + (local / CardColumns) * CardPitchY);
+				rects.Add(($"card{i}", new Rect2(position, new Vector2(CardWidth, CardHeight))));
+			}
+		}
+		else if (tab == 1)
+		{
+			rects.Add(("page", new Rect2(deskPageLabel.Position, deskPageLabel.Size)));
+			rects.Add(("list", new Rect2(deskList.Position, deskList.Size)));
+			for (int i = 0; i < deskArrows.Length; i++)
+				rects.Add(($"arrow{i}", new Rect2(deskArrows[i].Position, deskArrows[i].Size * deskArrows[i].Scale)));
+		}
+		else
+		{
+			rects.Add(("left", new Rect2(settingsLeft.Position, settingsLeft.Size)));
+			rects.Add(("right", new Rect2(settingsRight.Position, settingsRight.Size)));
+		}
+		return rects;
+	}
+
+	/// <summary>The paper the pages are printed on.</summary>
+	public static Rect2 LeftPageArea => LeftPage;
+	public static Rect2 RightPageArea => RightPage;
+
+	/// <summary>How much the book is scaled on the current screen.</summary>
+	public float UiScale => uiScale;
+
+	/// <summary>The area the open book covers on the screen.</summary>
+	public Rect2 BookRect => book.GetGlobalRect();
+
+	/// <summary>Self-test: a page tab and the first card of the summon page.</summary>
+	public TextureButton FirstTab => tabs[0];
+	public Control FirstCard => summonCards.GetChildOrNull<Control>(0);
 
 	// ---- Pet menu ----
 

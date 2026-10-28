@@ -148,6 +148,14 @@ public partial class DesktopWindow : Node
 		UpdateVisibility();
 	}
 
+	/// <summary>Self-test: pretend the overlay is a different size, so the UI lays out again.</summary>
+	public void SetTestSize(Vector2I size)
+	{
+		DisplayServer.WindowSetSize(size);
+		Size = size;
+		ScreenChanged?.Invoke();
+	}
+
 	/// <summary>Apply the user's "hide Capoos" toggle from the settings.</summary>
 	public void UpdateVisibility()
 	{
