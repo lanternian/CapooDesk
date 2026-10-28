@@ -39,6 +39,9 @@ public partial class CapooController : CharacterBody2D
 	public string DisplayName => Info?.name ?? "";
 	public CapooState State => state;
 	public CapooView View => view;
+
+	/// <summary>The summon/recycle smoke, a sibling of the view.</summary>
+	public SpineSprite AppearSprite => appearSprite;
 	public float PetScale { get; private set; } = 0.5f;
 	public bool FacingRight => view.FacingRight;
 
@@ -64,6 +67,7 @@ public partial class CapooController : CharacterBody2D
 
 	private CapooConfig config;
 	private CapooView view;
+	private SpineSprite appearSprite;
 	private RectangleShape2D bodyShape;
 	private CollisionShape2D bodyCollision;
 	private Vector2[] pickPolygon = Array.Empty<Vector2>();
@@ -92,6 +96,16 @@ public partial class CapooController : CharacterBody2D
 		config = GetNode<CapooConfig>("/root/CapooConfig");
 		view = new CapooView(InfoIndex);
 		AddChild(view);
+
+		// The summon/recycle smoke lives next to the view, not inside it: the character is
+		// hidden while the smoke plays, so the smoke must not be hidden with it.
+		appearSprite = view.AppearSprite;
+		if (appearSprite != null)
+		{
+			view.RemoveChild(appearSprite);
+			AddChild(appearSprite);
+			appearSprite.Position = Vector2.Zero;
+		}
 
 		bodyShape = new RectangleShape2D();
 		bodyCollision = new CollisionShape2D { Name = "capoo_collision", Shape = bodyShape };

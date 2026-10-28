@@ -19,6 +19,14 @@ public partial class CapooView : SpineSprite
 	/// <summary>The art faces left; mirrored when facing right.</summary>
 	public bool FacingRight => Scale.X < 0;
 
+	/// <summary>The summon/recycle smoke. It is not a child of the view: the character can be
+	/// hidden while the smoke keeps playing, so the controller parents it next to the view.</summary>
+	public SpineSprite AppearSprite => efxAppear;
+
+	/// <summary>Scale of the body skeleton's root bone (0.5 for most characters). The smoke
+	/// hangs off that bone, so it needs the same factor to sit where it used to.</summary>
+	public float RootBoneScale { get; private set; } = 0.5f;
+
 	private CapooInfo capooInfo;
 	private CapooConfig config;
 
@@ -37,7 +45,7 @@ public partial class CapooView : SpineSprite
 	private SpineAnimationState talkAnimationState, foodAnimationState, pooAnimationState;
 
 	/// <summary>Components hidden while the summon/recycle effect covers the character.</summary>
-	private readonly List<CanvasItem> characterParts = new List<CanvasItem>();
+	private readonly List<SpineSprite> characterParts = new List<SpineSprite>();
 
 	/// <summary>Hats, backs, props... that should also be clickable.</summary>
 	private readonly List<SpineSprite> accessories = new List<SpineSprite>();
@@ -129,7 +137,7 @@ public partial class CapooView : SpineSprite
 		PlayOrHide(talkAnimationState, capooAction.talk, capooAction.talk_loop);
 		if (!string.IsNullOrEmpty(capooAction.appear))
 		{
-			efxAppearAnimationState.SetAnimation(capooAction.appear, capooAction.appear_loop, 0);
+			efxAppearAnimationState?.SetAnimation(capooAction.appear, capooAction.appear_loop, 0);
 			MarkLayer(efxAppearAnimationState, true);
 			appearTimer = GetAnimationDuration(efxAppear, capooAction.appear) + 0.1;
 		}
@@ -164,7 +172,7 @@ public partial class CapooView : SpineSprite
 		if (!string.IsNullOrEmpty(capooAction.effectBot))
 			efxBotAnimationState.AddAnimation(capooAction.effectBot, delay, capooAction.effectBot_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.appear))
-			efxAppearAnimationState.AddAnimation(capooAction.appear, delay, capooAction.appear_loop, 0);
+			efxAppearAnimationState?.AddAnimation(capooAction.appear, delay, capooAction.appear_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.talk))
 			talkAnimationState.AddAnimation(capooAction.talk, delay, capooAction.talk_loop, 0);
 		if (!string.IsNullOrEmpty(capooAction.food))
@@ -175,6 +183,7 @@ public partial class CapooView : SpineSprite
 
 	private void PlayOrHide(SpineAnimationState state, string anim, bool loop)
 	{
+		if (state == null) return;
 		if (string.IsNullOrEmpty(anim))
 			state.SetAnimation("hide_all", true, 0);
 		else
@@ -201,13 +210,15 @@ public partial class CapooView : SpineSprite
 
 	private void RegisterOverlay(SpineSprite sprite, SpineAnimationState state)
 	{
+		if (sprite == null || state == null) return;
 		overlaySprites[state] = sprite;
 		MarkLayer(state, false);
 	}
 
 	private void MarkLayer(SpineAnimationState state, bool active)
 	{
-		if (!overlaySprites.TryGetValue(state, out var sprite)) return;
+		if (state == null) return;
+		if (!overlaySprites.TryGetValue(state, out var sprite) || sprite == null) return;
 		if (active)
 		{
 			hideCountdown.Remove(sprite);
@@ -295,26 +306,26 @@ public partial class CapooView : SpineSprite
 	{
 		bodyAnimationState.ClearTrack(0);
 		faceAnimationState.ClearTrack(0);
-		moodAnimationState.ClearTrack(0);
-		efxTopAnimationState.ClearTrack(0);
-		efxBotAnimationState.ClearTrack(0);
-		efxAppearAnimationState.ClearTrack(0);
-		talkAnimationState.ClearTrack(0);
-		foodAnimationState.ClearTrack(0);
-		pooAnimationState.ClearTrack(0);
+		moodAnimationState?.ClearTrack(0);
+		efxTopAnimationState?.ClearTrack(0);
+		efxBotAnimationState?.ClearTrack(0);
+		efxAppearAnimationState?.ClearTrack(0);
+		talkAnimationState?.ClearTrack(0);
+		foodAnimationState?.ClearTrack(0);
+		pooAnimationState?.ClearTrack(0);
 	}
 
 	public void SetEmptyAnimation()
 	{
 		bodyAnimationState.SetAnimation("hide_all");
 		faceAnimationState.SetAnimation("hide_all");
-		moodAnimationState.SetAnimation("hide_all");
-		efxTopAnimationState.SetAnimation("hide_all");
-		efxBotAnimationState.SetAnimation("hide_all");
-		efxAppearAnimationState.SetAnimation("hide_all");
-		talkAnimationState.SetAnimation("hide_all");
-		foodAnimationState.SetAnimation("hide_all");
-		pooAnimationState.SetAnimation("hide_all");
+		moodAnimationState?.SetAnimation("hide_all");
+		efxTopAnimationState?.SetAnimation("hide_all");
+		efxBotAnimationState?.SetAnimation("hide_all");
+		efxAppearAnimationState?.SetAnimation("hide_all");
+		talkAnimationState?.SetAnimation("hide_all");
+		foodAnimationState?.SetAnimation("hide_all");
+		pooAnimationState?.SetAnimation("hide_all");
 	}
 
 	public void ClearAnimation()
@@ -331,6 +342,7 @@ public partial class CapooView : SpineSprite
 	{
 		petScale = scale;
 		Scale = new Vector2(FacingRight ? -scale : scale, scale);
+		ApplyAppearScale();
 	}
 
 	public void SetFacing(bool right)
@@ -338,13 +350,37 @@ public partial class CapooView : SpineSprite
 		Scale = new Vector2(right ? -petScale : petScale, petScale);
 		// Keep the bubble icons ("?", "!") readable when mirrored.
 		if (talk != null) talk.Scale = new Vector2(right ? -2.0f : 2.0f, 2.0f);
+		ApplyAppearScale();
 	}
 
-	/// <summary>Hide/show the character itself while the summon or recycle effect plays.</summary>
+	/// <summary>The smoke hangs off the body's root bone; the bone node that used to carry it
+	/// scaled it by the bone scale, the sprite itself by two.</summary>
+	private void ApplyAppearScale()
+	{
+		if (efxAppear == null) return;
+		float s = petScale * RootBoneScale * 2f;
+		efxAppear.Scale = new Vector2(FacingRight ? -s : s, s);
+	}
+
+	/// <summary>Hide/show the character itself while the summon or recycle effect plays.
+	/// The whole view goes away, so body, face and accessories always appear together.</summary>
 	public void SetCharacterVisible(bool visible)
 	{
-		SelfModulate = visible ? Colors.White : Colors.Transparent;
-		foreach (var part in characterParts) part.Visible = visible;
+		if (Visible == visible) return;
+		Visible = visible;
+		if (visible) RefreshPose();
+	}
+
+	/// <summary>Apply the current pose right away. A part that was just created (or hidden)
+	/// would otherwise show up a frame late, because the Spine skeleton is only applied
+	/// while the sprite is visible in the tree.</summary>
+	public void RefreshPose()
+	{
+		if (!IsVisibleInTree()) return;
+		UpdateSkeleton(0);
+		foreach (var part in characterParts) part.UpdateSkeleton(0);
+		foreach (var sprite in overlaySprites.Values)
+			if (sprite.IsVisibleInTree()) sprite.UpdateSkeleton(0);
 	}
 
 	/// <summary>Global position of a body bone (e.g. "talk", "center", "hat").</summary>
@@ -385,6 +421,8 @@ public partial class CapooView : SpineSprite
 
 		InitBody();
 		bodyAnimationState = GetAnimationState();
+		var rootBone = GetSkeleton()?.GetRootBone();
+		if (rootBone != null) RootBoneScale = Mathf.Abs(rootBone.GetWorldScaleX());
 		if (capooInfo.handIndex)
 			bodyAnimationState.SetAnimation("hand_prop_r_01", true, 1); // hand index track
 
@@ -417,8 +455,19 @@ public partial class CapooView : SpineSprite
 		efxTop = AttachComponent("efx_top", "root", $"res://assets/spine/efx_top/{capooInfo.efx_top}.res", capooInfo.efx_top_Anim);
 		efxTopAnimationState = efxTop.GetAnimationState();
 
-		efxAppear = AttachComponent("efx_appears", "root", $"res://assets/spine/efx_appear/{capooInfo.efx_appears}.res", capooInfo.efx_appears_Anim);
-		efxAppearAnimationState = efxAppear.GetAnimationState();
+		// The smoke is not attached to the body: it has to keep playing while the character
+		// itself is hidden, so the controller moves it next to the view instead.
+		var appearData = GD.Load<SpineSkeletonDataResource>($"res://assets/spine/efx_appear/{capooInfo.efx_appears}.res");
+		if (appearData != null)
+		{
+			efxAppear = new SpineSprite { Name = "efx_appears", SkeletonDataRes = appearData, Visible = false };
+			AddChild(efxAppear);
+			efxAppearAnimationState = efxAppear.GetAnimationState();
+		}
+		else
+		{
+			GD.PrintErr($"Missing Spine resource efx_appear/{capooInfo.efx_appears}.res for {capooInfo.id}");
+		}
 
 		talk = AttachComponent("talk", "talk", $"res://assets/spine/char_talk/{capooInfo.talk}.res", capooInfo.talk_Anim);
 		talkAnimationState = talk.GetAnimationState();
@@ -434,7 +483,7 @@ public partial class CapooView : SpineSprite
 		RegisterOverlay(mood, moodAnimationState);
 		RegisterOverlay(efxBot, efxBotAnimationState);
 		RegisterOverlay(efxTop, efxTopAnimationState);
-		RegisterOverlay(efxAppear, efxAppearAnimationState);
+		if (efxAppear != null) RegisterOverlay(efxAppear, efxAppearAnimationState);
 		RegisterOverlay(talk, talkAnimationState);
 		RegisterOverlay(food, foodAnimationState);
 		RegisterOverlay(poo, pooAnimationState);

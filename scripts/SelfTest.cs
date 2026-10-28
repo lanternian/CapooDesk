@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -26,6 +27,9 @@ public partial class SelfTest : Node
 	/// <summary>Build every character once and check that all its parts load.</summary>
 	public bool LoadMode;
 
+	/// <summary>Save frame-by-frame pictures of the summon and the recycle.</summary>
+	public bool CaptureMode;
+
 	public override async void _Ready()
 	{
 		// Keep the overlay off the user's desktop; the viewport keeps rendering so the
@@ -36,6 +40,7 @@ public partial class SelfTest : Node
 			if (PerfMode) await RunPerf();
 			else if (WindowMode) await RunWindowTest();
 			else if (LoadMode) await RunLoadTest();
+			else if (CaptureMode) await RunCapture();
 			else await Run();
 		}
 		catch (Exception e)
@@ -127,9 +132,10 @@ public partial class SelfTest : Node
 		await Press(Center(a));
 		await Wait(0.35);
 		Vector2 grab = Center(a) - a.GlobalPosition;
-		Vector2 start = new Vector2(b.GlobalPosition.X - 450, b.GlobalPosition.Y - 120) + grab;
+		// Aim below B's head line: a Capoo that falls onto a head would stack instead of bump.
+		Vector2 start = new Vector2(b.GlobalPosition.X - 260, b.GlobalPosition.Y - 60) + grab;
 		await DragTo(start, 10, 0.02);
-		await DragTo(start + new Vector2(260, 0), 3, 0.016);
+		await DragTo(start + new Vector2(200, 0), 4, 0.02);
 		Release();
 		await WaitFor(() => b.State == CapooState.Dizzy, 2);
 		Check("thrown Capoo bumps another (dizzy)", b.State == CapooState.Dizzy, $"b={b.State} a={a.State}");
@@ -207,6 +213,118 @@ public partial class SelfTest : Node
 		Pets.RecycleAll();
 		await Wait(1.5);
 		Check("recycle removes all", Pets.Pets.Count == 0, Pets.Pets.Count.ToString());
+
+		// 12. Summon and recycle: body, face and accessories come and go together.
+		await CheckSummonSync();
+	}
+
+	/// <summary>Colours that identify the three layers of one Capoo: the blue body, the pink
+	/// blush of the face and the yellow helmet. Counting them in the viewport tells us which
+	/// layers are actually on screen.</summary>
+	private static readonly Color BodyBlue = new Color(90f / 255f, 201f / 255f, 232f / 255f);
+	private static readonly Color FacePink = new Color(255f / 255f, 116f / 255f, 116f / 255f);
+	private static readonly Color HatYellow = new Color(253f / 255f, 218f / 255f, 116f / 255f);
+
+	private async Task<(int blue, int pink, int yellow)> CountColors(Rect2 rect)
+	{
+		await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+		var img = GetViewport().GetTexture().GetImage();
+		return (CountColor(img, rect, BodyBlue), CountColor(img, rect, FacePink), CountColor(img, rect, HatYellow));
+	}
+
+	private static int CountColor(Image image, Rect2 rect, Color target)
+	{
+		Vector2I size = image.GetSize();
+		int x0 = Mathf.Max(0, (int)rect.Position.X);
+		int y0 = Mathf.Max(0, (int)rect.Position.Y);
+		int x1 = Mathf.Min(size.X, (int)rect.End.X);
+		int y1 = Mathf.Min(size.Y, (int)rect.End.Y);
+		int count = 0;
+		for (int y = y0; y < y1; y++)
+		{
+			for (int x = x0; x < x1; x++)
+			{
+				Color c = image.GetPixel(x, y);
+				if (c.A < 0.5f) continue;
+				if (Mathf.Abs(c.R - target.R) < 0.04f && Mathf.Abs(c.G - target.G) < 0.04f && Mathf.Abs(c.B - target.B) < 0.04f) count++;
+			}
+		}
+		return count;
+	}
+
+	/// <summary>Summons a Capoo with a blue body, a pink face and a yellow helmet and watches
+	/// the layers frame by frame: they must all appear (and vanish) in the same frame.</summary>
+	private async Task CheckSummonSync()
+	{
+		foreach (var p in Pets.Pets.ToArray())
+		{
+			Pets.RemovePet(p);
+			p.QueueFree();
+		}
+		await Wait(0.3);
+
+		const int character = 7; // 工地咖波: blue body, pink blush, yellow helmet
+		float x = Window.Size.X * 0.3f;
+		var pet = Pets.SpawnPet(character, new Vector2(x, Window.Size.Y));
+		// The idle action is picked at random and only some faces have the blush:
+		// use the one that always does, so the pink pixels mean "the face is there".
+		pet.View.SetAnimation("idle_idle1", force: true);
+		var rect = new Rect2(x - 140, Window.Size.Y - 230, 280, 250);
+
+		var frames = new List<(int blue, int pink, int yellow)>();
+		var smoke = new List<bool>();
+		for (int i = 0; i < 14; i++)
+		{
+			frames.Add(await CountColors(rect));
+			smoke.Add(pet.AppearSprite != null && pet.AppearSprite.Visible);
+			if (i == 3) await Capture("summon_smoke");
+			await Wait(0.04);
+		}
+		GD.Print("[selftest] summon frames: " + string.Join(" | ",
+			frames.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
+		Check("summon: the character is hidden while the smoke plays",
+			frames.Take(6).All(f => f.blue == 0 && f.pink == 0 && f.yellow == 0),
+			string.Join(" ", frames.Take(6).Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
+		Check("summon: body, face and helmet appear together",
+			frames.Any(f => f.blue > 0 && f.pink > 0 && f.yellow > 0) &&
+			frames.All(f => (f.blue > 0) == (f.pink > 0) && (f.blue > 0) == (f.yellow > 0)),
+			string.Join(" ", frames.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
+		Check("summon: the smoke plays while the character is hidden", smoke.Take(6).Any(v => v));
+		await Capture("summon");
+
+		await Wait(0.6);
+		pet.View.SetAnimation("idle_idle1", force: true);
+		pet.StartRecycle();
+		Check("recycle: the smoke plays", pet.AppearSprite != null && pet.AppearSprite.Visible);
+		// The smoke would hide the Capoo behind it; take it away to watch the layers.
+		if (pet.AppearSprite != null) pet.AppearSprite.Visible = false;
+		var recycle = new List<(int blue, int pink, int yellow)>();
+		for (int i = 0; i < 16; i++)
+		{
+			recycle.Add(await CountColors(rect));
+			await Wait(0.04);
+		}
+		GD.Print("[selftest] recycle frames: " + string.Join(" | ",
+			recycle.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
+		Check("recycle: body, face and helmet vanish together",
+			recycle.Any(f => f.blue == 0 && f.pink == 0 && f.yellow == 0) &&
+			recycle.All(f => (f.blue > 0) == (f.pink > 0) && (f.blue > 0) == (f.yellow > 0)),
+			string.Join(" ", recycle.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
+		Check("recycle: no body left behind", recycle.Skip(Math.Max(0, recycle.Count - 4)).All(f => f.blue == 0 && f.pink == 0 && f.yellow == 0),
+			string.Join(" ", recycle.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
+
+		// A second Capoo shows what the recycle looks like with the smoke in front of it.
+		float x2 = Window.Size.X * 0.65f;
+		var smokePet = Pets.SpawnPet(character, new Vector2(x2, Window.Size.Y));
+		await Wait(1.4);
+		smokePet.StartRecycle();
+		await Wait(0.12);
+		await Capture("recycle_smoke");
+		await Wait(0.3);
+		await Capture("recycle_smoke_late");
+		await Wait(0.6);
+		Check("recycle: nothing is left of the recycled Capoo",
+			CountColor(GetViewport().GetTexture().GetImage(), new Rect2(x2 - 140, Window.Size.Y - 230, 280, 250), BodyBlue) == 0);
 	}
 
 	private async Task RunPerf()
@@ -335,6 +453,34 @@ public partial class SelfTest : Node
 		Check("Capoo falls when the window closes", pet.State.IsAirborne(), pet.State.ToString());
 		await WaitFor(() => pet.State == CapooState.Idle, 4);
 		Check("...and lands on the taskbar", Mathf.Abs(pet.GlobalPosition.Y - Window.Size.Y) < 3, pet.GlobalPosition.ToString());
+	}
+
+	/// <summary>Frame-by-frame pictures of a summon and a recycle, for the issue reports.</summary>
+	private async Task RunCapture()
+	{
+		CapooController.AutonomyEnabled = false;
+		foreach (var p in Pets.Pets.ToArray())
+		{
+			Pets.RemovePet(p);
+			p.QueueFree();
+		}
+		await Wait(0.3);
+
+		float x = Window.Size.X * 0.3f;
+		var pet = Pets.SpawnPet(7, new Vector2(x, Window.Size.Y));
+		pet.View.SetAnimation("idle_idle1", force: true);
+		for (int i = 0; i < 12; i++)
+		{
+			await Capture($"appear_{i * 5:000}");
+			await Wait(0.05);
+		}
+		await Wait(0.5);
+		pet.StartRecycle();
+		for (int i = 0; i < 12; i++)
+		{
+			await Capture($"recycle_{i * 5:000}");
+			await Wait(0.05);
+		}
 	}
 
 	private async Task RunLoadTest()
