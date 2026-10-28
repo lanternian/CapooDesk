@@ -20,11 +20,15 @@ public partial class SelfTest : Node
 	/// <summary>Run the frame-time benchmark instead of the interaction script.</summary>
 	public bool PerfMode;
 
+	/// <summary>Window-awareness test against a window titled "CapooTestWindow".</summary>
+	public bool WindowMode;
+
 	public override async void _Ready()
 	{
 		try
 		{
 			if (PerfMode) await RunPerf();
+			else if (WindowMode) await RunWindowTest();
 			else await Run();
 		}
 		catch (Exception e)
@@ -179,7 +183,20 @@ public partial class SelfTest : Node
 		book.HideBook();
 		Check("book closes", !book.IsBookOpen);
 
-		// 10. Recycle everything.
+		// 10. Away from the computer -> everyone falls asleep; back -> they wake up one by one.
+		CapooController.AutonomyEnabled = true;
+		AppSettings.Instance.Data.SleepEnabled = true;
+		Pets.DebugIdleSeconds = 24 * 3600;
+		await WaitFor(() => Pets.Pets.All(p => p.IsAsleep || p.StackBelow != null), 20);
+		Check("idle user: Capoos fall asleep", Pets.Pets.All(p => p.IsAsleep || p.StackBelow != null), States());
+		await Capture("all_asleep");
+		Pets.DebugIdleSeconds = 0;
+		await WaitFor(() => Pets.Pets.All(p => !p.IsAsleep), 10);
+		Check("user back: Capoos wake up", Pets.Pets.All(p => !p.IsAsleep), States());
+		Pets.DebugIdleSeconds = null;
+		CapooController.AutonomyEnabled = false;
+
+		// 11. Recycle everything.
 		Pets.RecycleAll();
 		await Wait(1.5);
 		Check("recycle removes all", Pets.Pets.Count == 0, Pets.Pets.Count.ToString());
@@ -244,6 +261,73 @@ public partial class SelfTest : Node
 			GD.Print($"[selftest] perf pets={target} fps={fps:0} cpu={cpuMs / wallMs * 100:0}% of one core ({cpuMs / wallMs * 100 / System.Environment.ProcessorCount:0.0}% total) cpu/frame={cpuMs / (wallMs / 1000 * fps):0.0}ms nodes={Performance.GetMonitor(Performance.Monitor.ObjectNodeCount):0} mem={OS.GetStaticMemoryUsage() / 1048576.0:0}MB");
 		}
 		passed++;
+	}
+
+	private async Task RunWindowTest()
+	{
+		CapooController.AutonomyEnabled = false;
+		Window.VirtualCursor = new Vector2(5, 5);
+
+		IntPtr hwnd = IntPtr.Zero;
+		for (int i = 0; i < 100 && hwnd == IntPtr.Zero; i++)
+		{
+			hwnd = Win32.FindWindow(null, "CapooTestWindow");
+			if (hwnd == IntPtr.Zero) await Wait(0.1);
+		}
+		Check("test window found", hwnd != IntPtr.Zero);
+		if (hwnd == IntPtr.Zero) return;
+
+		foreach (var p in Pets.Pets.ToArray())
+		{
+			Pets.RemovePet(p);
+			p.QueueFree();
+		}
+		await Wait(0.6);
+
+		Win32.DwmGetWindowAttribute(hwnd, Win32.DWMWA_EXTENDED_FRAME_BOUNDS, out Win32.RECT rect, System.Runtime.InteropServices.Marshal.SizeOf<Win32.RECT>());
+		Vector2 top = Window.ScreenToWorld(new Vector2I((rect.Left + rect.Right) / 2, rect.Top));
+		bool hasPlatform = DesktopWorld.Instance.GetPlatformSegments().Any(s => Mathf.Abs(s.from.Y - top.Y) < 2 && s.from.X <= top.X && s.to.X >= top.X);
+		Check("window top edge becomes a platform", hasPlatform, $"top={top}");
+
+		var pet = Pets.SpawnPet(0, new Vector2(top.X, Window.Size.Y));
+		await Wait(1.5);
+		await Press(Center(pet));
+		await Wait(0.35);
+		await DragTo(new Vector2(top.X, top.Y - 260) + (Center(pet) - pet.GlobalPosition), 15, 0.02);
+		await Wait(0.25);
+		Release();
+		await WaitFor(() => pet.State == CapooState.Idle, 4);
+		Check("dropped Capoo lands on the window", pet.FloorHwnd == hwnd.ToInt64() && Mathf.Abs(pet.GlobalPosition.Y - top.Y) < 3,
+			$"floor={pet.FloorHwnd} y={pet.GlobalPosition.Y} top={top.Y} state={pet.State}");
+		await Capture("on_window");
+
+		// Walking towards the edge: it either stops/turns at the edge or hops down, never floats.
+		var walker = Pets.SpawnPet(1, new Vector2(top.X - 150, top.Y - 200));
+		await WaitFor(() => walker.State == CapooState.Idle && walker.FloorHwnd == hwnd.ToInt64(), 4);
+		walker.DebugWalkTo(Window.ScreenToWorld(new Vector2I(rect.Right, 0)).X + 300);
+		await Wait(8.0);
+		await WaitFor(() => walker.State == CapooState.Idle, 4);
+		bool onWindow = walker.FloorHwnd == hwnd.ToInt64() && Mathf.Abs(walker.GlobalPosition.Y - top.Y) < 3;
+		bool onFloor = Mathf.Abs(walker.GlobalPosition.Y - Window.Size.Y) < 3;
+		Check("walking to the window edge stops or hops down", onWindow || onFloor, $"{walker.State} {walker.GlobalPosition}");
+		walker.StartRecycle();
+		await Wait(1.0);
+
+		Vector2 before = pet.GlobalPosition;
+		Win32.SetWindowPos(hwnd, IntPtr.Zero, rect.Left + 200, rect.Top - 150, 0, 0,
+			Win32.SWP_NOSIZE | Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
+		await Wait(0.6);
+		Vector2 moved = pet.GlobalPosition - before;
+		Win32.DwmGetWindowAttribute(hwnd, Win32.DWMWA_EXTENDED_FRAME_BOUNDS, out Win32.RECT after, System.Runtime.InteropServices.Marshal.SizeOf<Win32.RECT>());
+		var windowMoved = new Vector2(after.Left - rect.Left, after.Top - rect.Top);
+		Check("Capoo rides along when the window moves", moved.DistanceTo(windowMoved) < 2, $"pet {moved} window {windowMoved}");
+		await Capture("carried");
+
+		Win32.PostMessage(hwnd, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+		await WaitFor(() => pet.State.IsAirborne(), 2);
+		Check("Capoo falls when the window closes", pet.State.IsAirborne(), pet.State.ToString());
+		await WaitFor(() => pet.State == CapooState.Idle, 4);
+		Check("...and lands on the taskbar", Mathf.Abs(pet.GlobalPosition.Y - Window.Size.Y) < 3, pet.GlobalPosition.ToString());
 	}
 
 	// ---- helpers ----

@@ -93,6 +93,11 @@ public static class Win32
 	[DllImport("user32.dll")]
 	public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+	[DllImport("user32.dll", CharSet = CharSet.Unicode)]
+	public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+	public const uint WM_CLOSE = 0x0010;
+
 	[DllImport("user32.dll")]
 	public static extern bool IsWindowVisible(IntPtr hWnd);
 

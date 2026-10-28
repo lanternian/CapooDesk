@@ -334,6 +334,16 @@ public partial class CapooController
 	/// <summary>Self-test/debug: jump straight into a state (hungry, pooing, ...).</summary>
 	public void DebugEnter(CapooState next) => EnterState(next);
 
+	/// <summary>Self-test/debug: walk towards a point.</summary>
+	public void DebugWalkTo(float x)
+	{
+		StartMove(CapooState.Walk);
+		moveDirection = x > GlobalPosition.X ? 1 : -1;
+		moveTargetX = x;
+		SetFacing(moveDirection > 0);
+		stateDuration = Mathf.Abs(x - GlobalPosition.X) / Math.Max(moveSpeed, 1f) + 2.0;
+	}
+
 	private void Decide()
 	{
 		if (!AutonomyEnabled)

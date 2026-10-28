@@ -383,10 +383,14 @@ public partial class PetManager : Node2D
 
 	// ---- Sleep schedule ----
 
+	/// <summary>Self-test: pretend the system has been idle this long (null = real value).</summary>
+	public double? DebugIdleSeconds { get; set; }
+
 	private void UpdateSchedule()
 	{
 		var s = Settings;
-		bool away = s.SleepEnabled && Win32.GetSystemIdleSeconds() >= s.SleepIdleMinutes * 60.0;
+		double idle = DebugIdleSeconds ?? Win32.GetSystemIdleSeconds();
+		bool away = s.SleepEnabled && idle >= s.SleepIdleMinutes * 60.0;
 		if (UserAway && !away)
 		{
 			foreach (var pet in pets) pet.OnUserReturned();
