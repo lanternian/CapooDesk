@@ -66,6 +66,13 @@ public partial class AppSettings : Node
 		file.Close();
 	}
 
+	/// <summary>Self-test: start from the default settings, whatever an earlier run saved.</summary>
+	public void ResetToDefaults()
+	{
+		Data = new SettingsData();
+		Changed?.Invoke();
+	}
+
 	/// <summary>Modify settings, then save and notify listeners.</summary>
 	public void Apply(Action<SettingsData> change)
 	{

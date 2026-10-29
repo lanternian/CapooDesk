@@ -35,6 +35,16 @@ public partial class SelfTest : Node
 
 	public override async void _Ready()
 	{
+		// The tests clear the desktop and change settings; never do that to the real ones.
+		if (!AppSettings.IsTestRun)
+		{
+			GD.PrintErr("[selftest] refusing to run without --test (it would overwrite the real settings)");
+			GetTree().Quit(1);
+			return;
+		}
+		// Every run starts from the defaults, so an earlier run cannot change the outcome.
+		AppSettings.Instance.ResetToDefaults();
+
 		// Keep the overlay off the user's desktop; the viewport keeps rendering so the
 		// captures below still show what the pets are doing.
 		Window.SetTestHidden(true);
@@ -596,6 +606,30 @@ public partial class SelfTest : Node
 		}
 		Check("book: nothing overlaps", overlaps.Count == 0, string.Join(", ", overlaps));
 		Check("book: everything stays on the paper", outside.Count == 0, string.Join(", ", outside));
+
+		// The tabs sit behind the cover, but their icons must stay in sight.
+		var cover = UiTheme.Tex("ui_pop_collection_01").GetImage();
+		var hidden = new List<string>();
+		var tabRects = book.GetLayoutRects(0).Where(r => r.name.StartsWith("tab")).ToList();
+		string[] tabImages = { "01", "03", "04" };
+		for (int i = 0; i < tabRects.Count; i++)
+		{
+			var tabImage = UiTheme.Tex($"tab_menu_{tabImages[i]}_h").GetImage();
+			int icon = 0, covered = 0;
+			for (int y = 0; y < tabImage.GetHeight(); y++)
+			{
+				for (int x = 0; x < tabImage.GetWidth(); x++)
+				{
+					Color c = tabImage.GetPixel(x, y);
+					if (c.A < 0.8f || c.R < 0.92f || c.G < 0.92f || c.B < 0.92f) continue; // the white icon
+					icon++;
+					int bx = (int)(tabRects[i].rect.Position.X + x), by = (int)(tabRects[i].rect.Position.Y + y);
+					if (bx < cover.GetWidth() && by < cover.GetHeight() && cover.GetPixel(bx, by).A > 0.5f) covered++;
+				}
+			}
+			if (icon == 0 || covered > icon * 0.02) hidden.Add($"tab{i} {covered}/{icon} icon pixels under the cover");
+		}
+		Check("book: the tab icons are not hidden by the cover", hidden.Count == 0, string.Join(", ", hidden));
 
 		// The book has to fit on a 1080p screen as well.
 		Vector2 size = book.BookRect.Size;
