@@ -19,7 +19,18 @@ public partial class PetManager : Node2D
 	public bool UserAway { get; private set; }
 
 	/// <summary>Inside the configured night hours: Capoos nap a lot more.</summary>
-	public bool IsNight { get; private set; }
+	public bool IsNight
+	{
+		get
+		{
+			// Worked out on demand, so switching night naps off takes effect at once.
+			var s = Settings;
+			int hour = DateTime.Now.Hour;
+			return s.SleepEnabled && s.NightSleep && (s.NightStartHour > s.NightEndHour
+				? hour >= s.NightStartHour || hour < s.NightEndHour
+				: hour >= s.NightStartHour && hour < s.NightEndHour);
+		}
+	}
 
 	public event Action PetsChanged;
 	public event Action<CapooController, Vector2> PetRightClicked;
@@ -396,11 +407,6 @@ public partial class PetManager : Node2D
 			foreach (var pet in pets) pet.OnUserReturned();
 		}
 		UserAway = away;
-
-		int hour = DateTime.Now.Hour;
-		IsNight = s.SleepEnabled && s.NightSleep && (s.NightStartHour > s.NightEndHour
-			? hour >= s.NightStartHour || hour < s.NightEndHour
-			: hour >= s.NightStartHour && hour < s.NightEndHour);
 	}
 
 	// ---- Settings / screen ----
