@@ -478,15 +478,38 @@ public partial class CapooView : SpineSprite
 			return cache.Names;
 		}
 		var names = new string[count];
-		var slots = sprite.GetSkeleton().GetSlots();
-		for (int i = 0; i < count && i < slots.Count; i++)
+		var slotWrappers = new List<SpineSlot>();
+		var attachments = new List<SpineAttachment>();
+		using (var slots = sprite.GetSkeleton().GetSlots())
 		{
-			var attachment = slots[i].As<SpineSlot>()?.GetAttachment();
-			names[i] = attachment?.GetAttachmentName();
+			for (int i = 0; i < count && i < slots.Count; i++)
+			{
+				var slot = slots[i].As<SpineSlot>();
+				if (slot == null) continue;
+				slotWrappers.Add(slot);
+				var attachment = slot.GetAttachment();
+				if (attachment == null) continue;
+				names[i] = attachment.GetAttachmentName();
+				attachments.Add(attachment);
+			}
 		}
+		ReleaseSpineWrappers(sprite, slotWrappers, attachments);
 		cache.Names = names;
 		cache.Frame = frame;
 		return names;
+	}
+
+	/// <summary>spine-godot 4.1 bug: a SpineAttachment never references the attachment it
+	/// wraps, yet its destructor dereferences it. Every wrapper freed with its pointer intact
+	/// corrupts the attachment's reference count, and one freed after the skeleton data
+	/// (at exit) touches freed memory: an access violation in .NET's shutdown clean-up.
+	/// The resource's "_internal_spine_objects_invalidated" signal makes the wrappers drop
+	/// their pointer (only these wrappers listen to it), so they can be let go right away.</summary>
+	private static void ReleaseSpineWrappers(SpineSprite sprite, List<SpineSlot> slots, List<SpineAttachment> attachments)
+	{
+		if (attachments.Count > 0) sprite.SkeletonDataRes?.EmitSignal("_internal_spine_objects_invalidated");
+		foreach (var attachment in attachments) attachment.Dispose();
+		foreach (var slot in slots) slot.Dispose();
 	}
 
 	private class SlotCache

@@ -59,6 +59,17 @@ waitCleanPooTalk, comfortable1-2, hop) — same schema, merged by CapooConfig in
 
 `SetLayer(layer, anim, loop)` plays one raw layer animation (e.g. an extra "bump" on EffectBot).
 
+## Pitfall: SpineAttachment wrappers (spine-godot 4.1 bug)
+`SpineSlot.GetAttachment()` (and `GetAttachmentBySlot*`) returns a `SpineAttachment` that never calls
+`reference()` on the attachment it wraps, but its destructor calls `dereference()`
+(`spine-godot/spine_godot/SpineAttachment.cpp:39`). Every wrapper freed with its pointer intact corrupts the
+attachment's reference count, and one freed after the skeleton data is gone (e.g. by .NET's shutdown
+clean-up) touches freed memory → `Fatal error 0xC0000005 ... godotsharp_internal_refcounted_disposed`.
+After reading what you need, fire `SkeletonDataRes.EmitSignal("_internal_spine_objects_invalidated")`
+(only these wrappers listen to it; they drop their pointer) and `Dispose()` the wrappers right away —
+see `CapooView.ReleaseSpineWrappers`. Every `GetSlots()` call also creates new `SpineSlot` wrappers that
+connect a signal on the sprite: dispose them too.
+
 ## Performance notes
 - Overlay sprites (mood, efx, talk, food, poo, appear) are frozen (`ProcessMode = Disabled`, hidden) two frames
   after they go to hide_all, and woken by the next animation on that layer.
