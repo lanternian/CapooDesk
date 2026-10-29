@@ -15,6 +15,7 @@ public partial class MagicBook : CanvasLayer
 	private const int CardsPerSpread = CardsPerSide * 2;
 	private const int DeskRowsPerPage = 8;
 	private const float ButtonBaseScale = 0.55f;
+	public const float TabX = 874f;
 
 	// Writable page areas inside ui_pop_collection_01.png (954x694). The paper runs out at
 	// y=500 (below that the pages are rolled up) and the folded corner in the top right of
@@ -28,10 +29,10 @@ public partial class MagicBook : CanvasLayer
 	private const float CardPitchY = 94f;
 	private const float CardWidth = 100f;
 	private const float CardHeight = 92f;
-	private const float CardTop = 28f;
+	private const float CardTop = 34f;
 
 	// The strip at the bottom of a page: the page arrows and the page number.
-	private const float BottomBarY = 468f;
+	private const float BottomBarY = 470f;
 	private const float ArrowScale = 0.75f;
 
 	private static SettingsData Settings => AppSettings.Instance.Data;
@@ -54,6 +55,7 @@ public partial class MagicBook : CanvasLayer
 	private Control summonCards;
 	private Label summonPageLabel;
 	private Label summonStatus;
+	private HBoxContainer summonHeader;
 	private readonly TextureButton[] summonArrows = new TextureButton[2];
 
 	// Desk tab
@@ -96,6 +98,7 @@ public partial class MagicBook : CanvasLayer
 		var window = DesktopWindow.Instance;
 		window.RegisterInteractive(bookButton);
 		window.RegisterInteractive(book);
+		foreach (var tab in tabs) window.RegisterInteractive(tab); // they reach past the book image
 		window.RegisterInteractive(petMenu);
 		window.ScreenChanged += LayoutForScreen;
 
@@ -264,6 +267,8 @@ public partial class MagicBook : CanvasLayer
 		root.AddChild(book);
 
 		// The page tabs peek out from behind the cover, so they go in before the paper.
+		// The cover's right edge is at x≈888 next to them; the icon starts 21 px into the
+		// tab image, so the tabs start at 874 to show the whole icon.
 		string[] tips = { "召唤咖波", "桌面上的咖波", "设置" };
 		for (int i = 0; i < tabs.Length; i++)
 		{
@@ -271,7 +276,7 @@ public partial class MagicBook : CanvasLayer
 			tabs[i] = new TextureButton
 			{
 				TextureNormal = UiTheme.Tex($"tab_menu_{TabImages[i]}_n"),
-				Position = new Vector2(836, 96 + i * 66),
+				Position = new Vector2(TabX, 96 + i * 66),
 				TooltipText = tips[i],
 				MouseDefaultCursorShape = Control.CursorShape.PointingHand
 			};
@@ -354,13 +359,13 @@ public partial class MagicBook : CanvasLayer
 	{
 		var page = NewPage();
 
-		var title = UiTheme.MakeLabel("咖波图鉴", 25);
-		title.Position = LeftPage.Position + new Vector2(8, 0);
-		page.AddChild(title);
-
+		summonHeader = new HBoxContainer { Position = LeftPage.Position + new Vector2(8, 0), MouseFilter = Control.MouseFilterEnum.Ignore };
+		summonHeader.AddThemeConstantOverride("separation", 14);
+		page.AddChild(summonHeader);
+		summonHeader.AddChild(UiTheme.MakeLabel("咖波图鉴", 25));
 		var hint = UiTheme.MakeLabel("点一下就能召唤到桌面上", 16, UiTheme.InkLight);
-		hint.Position = LeftPage.Position + new Vector2(112, 6);
-		page.AddChild(hint);
+		hint.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+		summonHeader.AddChild(hint);
 
 		// Right aligned, but the folded corner of the page keeps its width.
 		summonStatus = UiTheme.MakeLabel("", 17, UiTheme.InkLight);
@@ -780,6 +785,7 @@ public partial class MagicBook : CanvasLayer
 
 		if (tab == 0)
 		{
+			rects.Add(("header", new Rect2(summonHeader.Position, summonHeader.Size)));
 			rects.Add(("status", new Rect2(summonStatus.Position, summonStatus.Size)));
 			rects.Add(("page", new Rect2(summonPageLabel.Position, summonPageLabel.Size)));
 			for (int i = 0; i < summonArrows.Length; i++)
