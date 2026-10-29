@@ -138,7 +138,8 @@ public partial class SelfTest : Node
 		await Wait(0.2);
 		Release();
 		await WaitFor(() => c.State == CapooState.Stacked, 3);
-		Check("dropping onto a head stacks", c.State == CapooState.Stacked && c.StackBelow == d, $"{c.State} below={c.StackBelow?.Name}");
+		// A thrown earlier may already sit on D's head; then C lands on top of that stack.
+		Check("dropping onto a head stacks", c.State == CapooState.Stacked && d.IsCarrying(c), $"{c.State} below={c.StackBelow?.Name}");
 		await Wait(1.0);
 		await Capture("stacked");
 		Check("stack follows the base", Mathf.Abs(c.GlobalPosition.X - d.GlobalPosition.X) < 1f);
@@ -230,20 +231,38 @@ public partial class SelfTest : Node
 		await Wait(0.3);
 		await Capture("pet_menu");
 		book.ShowBook();
-		for (int tab = 0; tab < 3; tab++)
+		for (int tab = 0; tab < book.TabCount; tab++)
 		{
 			book.ShowTab(tab);
 			await Wait(0.5);
 			await Capture($"book_tab{tab}");
 		}
 		CheckBookLayout(book);
+		await CheckCollectionTiles(book);
 		book.HideBook();
 		Check("book closes", !book.IsBookOpen);
 
+		// Tray "隐藏魔法书": hides the book button (and an open book), ticks the menu item.
+		var main = GetNode<Main>("/root/Main");
+		var tray = GetNode<TrayIcon>("/root/Main/TrayIcon");
+		book.ShowBook();
+		main.ToggleBookButton();
+		Check("tray: 隐藏魔法书 hides the book",
+			!book.IsBookButtonVisible && !book.IsBookOpen && tray.IsChecked(TrayIcon.Command.ToggleBookButton));
+		main.ToggleBookButton();
+		Check("tray: 隐藏魔法书 again brings the button back",
+			book.IsBookButtonVisible && !tray.IsChecked(TrayIcon.Command.ToggleBookButton));
+
 		// 10. Away from the computer -> everyone falls asleep; back -> they wake up one by one.
-		CapooController.AutonomyEnabled = true;
 		AppSettings.Instance.Data.SleepEnabled = true;
+		// At night Capoos also take naps, which on purpose do not end when the user is back;
+		// keep the check independent of the time of day.
+		AppSettings.Instance.Data.NightSleep = false;
 		Pets.DebugIdleSeconds = 24 * 3600;
+		// The away state is looked at once a second: let it settle before the Capoos decide,
+		// so they go to sleep until the user is back rather than for a nap.
+		await WaitFor(() => Pets.UserAway, 2);
+		CapooController.AutonomyEnabled = true;
 		await WaitFor(() => Pets.Pets.All(p => p.IsAsleep || p.StackBelow != null), 20);
 		Check("idle user: Capoos fall asleep", Pets.Pets.All(p => p.IsAsleep || p.StackBelow != null), States());
 		await Capture("all_asleep");
@@ -266,7 +285,7 @@ public partial class SelfTest : Node
 		Window.SetTestSize(new Vector2I(1920, 1040));
 		await Wait(0.4);
 		book.ShowBook();
-		for (int tab = 0; tab < 3; tab++)
+		for (int tab = 0; tab < book.TabCount; tab++)
 		{
 			book.ShowTab(tab);
 			await Wait(0.4);
@@ -583,7 +602,7 @@ public partial class SelfTest : Node
 	{
 		var overlaps = new List<string>();
 		var outside = new List<string>();
-		for (int tab = 0; tab < 3; tab++)
+		for (int tab = 0; tab < book.TabCount; tab++)
 		{
 			var rects = book.GetLayoutRects(tab);
 			// The parts of a page must not sit on top of each other.
@@ -595,10 +614,12 @@ public partial class SelfTest : Node
 					overlaps.Add($"tab{tab} {rects[i].name}/{rects[j].name}");
 				}
 			}
-			// Everything that belongs to a page has to stay on the paper.
+			// Everything that belongs to a page has to stay on the paper; the tabs, the
+			// close button, the counter, the arrows, the ribbon and the trash can sit off it
+			// on purpose, like in the original book.
 			foreach (var (name, rect) in rects)
 			{
-				if (name.StartsWith("tab") || name == "close") continue; // the tabs stick out on purpose
+				if (MagicBook.IsOffPaperByDesign(name)) continue;
 				bool onLeft = MagicBook.LeftPageArea.Grow(2).Encloses(rect);
 				bool onRight = MagicBook.RightPageArea.Grow(2).Encloses(rect);
 				if (!onLeft && !onRight) outside.Add($"tab{tab} {name} {rect}");
@@ -607,29 +628,32 @@ public partial class SelfTest : Node
 		Check("book: nothing overlaps", overlaps.Count == 0, string.Join(", ", overlaps));
 		Check("book: everything stays on the paper", outside.Count == 0, string.Join(", ", outside));
 
-		// The tabs sit behind the cover, but their icons must stay in sight.
-		var cover = UiTheme.Tex("ui_pop_collection_01").GetImage();
+		// The tabs go under the left page, but their icons must stay in sight, whether the
+		// tab is the open one (sticks out) or not (tucked in a little).
 		var hidden = new List<string>();
-		var tabRects = book.GetLayoutRects(0).Where(r => r.name.StartsWith("tab")).ToList();
-		string[] tabImages = { "01", "03", "04" };
-		for (int i = 0; i < tabRects.Count; i++)
+		for (int open = 0; open < book.TabCount; open++)
 		{
-			var tabImage = UiTheme.Tex($"tab_menu_{tabImages[i]}_h").GetImage();
-			int icon = 0, covered = 0;
-			for (int y = 0; y < tabImage.GetHeight(); y++)
+			book.ShowTab(open);
+			for (int i = 0; i < book.TabCount; i++)
 			{
-				for (int x = 0; x < tabImage.GetWidth(); x++)
+				var tab = book.Tabs[i];
+				var tabImage = UiTheme.Tex($"tab_menu_{MagicBook.TabImageNames[i]}_h").GetImage();
+				int icon = 0, covered = 0;
+				for (int y = 0; y < tabImage.GetHeight(); y++)
 				{
-					Color c = tabImage.GetPixel(x, y);
-					if (c.A < 0.8f || c.R < 0.92f || c.G < 0.92f || c.B < 0.92f) continue; // the white icon
-					icon++;
-					int bx = (int)(tabRects[i].rect.Position.X + x), by = (int)(tabRects[i].rect.Position.Y + y);
-					if (bx < cover.GetWidth() && by < cover.GetHeight() && cover.GetPixel(bx, by).A > 0.5f) covered++;
+					for (int x = 0; x < tabImage.GetWidth(); x++)
+					{
+						Color c = tabImage.GetPixel(x, y);
+						if (c.A < 0.8f || c.R < 0.92f || c.G < 0.92f || c.B < 0.92f) continue; // the white icon
+						icon++;
+						if (book.IsUnderPage(tab.Position + new Vector2(x, y))) covered++;
+					}
 				}
+				if (icon == 0 || covered > icon * 0.02) hidden.Add($"open{open} tab{i} {covered}/{icon} icon pixels under the page");
 			}
-			if (icon == 0 || covered > icon * 0.02) hidden.Add($"tab{i} {covered}/{icon} icon pixels under the cover");
 		}
-		Check("book: the tab icons are not hidden by the cover", hidden.Count == 0, string.Join(", ", hidden));
+		Check("book: the tab icons are not hidden under the page", hidden.Count == 0, string.Join(", ", hidden));
+		book.ShowTab(book.TabCount - 1);
 
 		// The book has to fit on a 1080p screen as well.
 		Vector2 size = book.BookRect.Size;
@@ -642,6 +666,26 @@ public partial class SelfTest : Node
 		Check("book: tooltips are readable",
 			tooltipBox != null && tooltipBox.BgColor.R > 0.8f && tooltipInk.R < 0.6f,
 			$"{tooltipBox?.BgColor} {tooltipInk}");
+	}
+
+	/// <summary>The collection page: Capoos on the desk get a green tile, and hovering a
+	/// tile shows its name in a bubble (the real mouse never moves, the event is injected).</summary>
+	private async Task CheckCollectionTiles(MagicBook book)
+	{
+		book.ShowTab(0);
+		await Wait(0.3);
+		var onDesk = Pets.Pets.Select(p => p.InfoIndex).Where(i => i < 18).Distinct().ToList();
+		var wrong = onDesk.Where(i => !book.IsTileOnDesk(i)).ToList();
+		Check("book: Capoos on the desk have a green tile", onDesk.Count > 0 && wrong.Count == 0, string.Join(",", wrong));
+		Check("book: other Capoos keep a beige tile", !book.IsTileOnDesk(17) || onDesk.Contains(17));
+
+		Window.VirtualCursor = book.FirstCard.GetGlobalRect().GetCenter();
+		await Wait(0.3);
+		Check("book: hovering a tile shows its name", book.NameBubble.Visible);
+		await Capture("book_hover");
+		Window.VirtualCursor = book.BookRect.Position + new Vector2(5, 5);
+		await Wait(0.2);
+		Check("book: the name goes away with the mouse", !book.NameBubble.Visible);
 	}
 
 	/// <summary>Waits until the blush of the face is visible. The blush blinks, so a

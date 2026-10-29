@@ -71,16 +71,18 @@ public static class UiTheme
 		theme.SetStylebox("disabled", "Button", Pill(new Color("eee6d4")));
 		theme.SetStylebox("focus", "Button", new StyleBoxEmpty());
 
-		// Check boxes: the original tick, and a plain paper box when off.
-		var tick = Scaled("btn_checkbox_02", 30, 30);
-		var empty = RoundedBox(30, 7, new Color("fffaf0"), PaperEdge, 3);
+		// Check boxes as in the original settings page: a dark square when off, the
+		// yellow tick when on.
+		var tick = Scaled("btn_checkbox_02", 26, 26);
+		var empty = Scaled("btn_checkbox_01", 26, 26);
 		theme.SetIcon("checked", "CheckBox", tick);
 		theme.SetIcon("unchecked", "CheckBox", empty);
 		theme.SetIcon("checked_disabled", "CheckBox", tick);
 		theme.SetIcon("unchecked_disabled", "CheckBox", empty);
 		foreach (string state in new[] { "normal", "hover", "pressed", "hover_pressed", "focus", "disabled" })
 			theme.SetStylebox(state, "CheckBox", new StyleBoxEmpty());
-		theme.SetConstant("h_separation", "CheckBox", 8);
+		theme.SetConstant("h_separation", "CheckBox", 6);
+		theme.SetFontSize("font_size", "CheckBox", 16);
 
 		// Sliders: grey track, yellow fill, yellow knob.
 		theme.SetStylebox("slider", "HSlider", Bar(new Color("d9d2c3")));
@@ -135,29 +137,6 @@ public static class UiTheme
 		box.SetBorderWidthAll(2);
 		box.SetCornerRadiusAll(8);
 		return box;
-	}
-
-	/// <summary>A small rounded square icon drawn in code.</summary>
-	private static Texture2D RoundedBox(int size, float radius, Color fill, Color border, float borderWidth)
-	{
-		var image = Image.Create(size, size, false, Image.Format.Rgba8);
-		float half = size / 2f;
-		for (int y = 0; y < size; y++)
-		{
-			for (int x = 0; x < size; x++)
-			{
-				// Signed distance to a rounded square, with 1px of anti-aliasing.
-				float qx = Mathf.Abs(x + 0.5f - half) - (half - radius - 1);
-				float qy = Mathf.Abs(y + 0.5f - half) - (half - radius - 1);
-				float outside = new Vector2(Mathf.Max(qx, 0), Mathf.Max(qy, 0)).Length() + Mathf.Min(Mathf.Max(qx, qy), 0) - radius;
-				float alpha = Mathf.Clamp(0.5f - outside, 0, 1);
-				if (alpha <= 0) continue;
-				Color c = outside > -borderWidth ? border : fill;
-				c.A *= alpha;
-				image.SetPixel(x, y, c);
-			}
-		}
-		return ImageTexture.CreateFromImage(image);
 	}
 
 	private static StyleBoxFlat Pill(Color color)
