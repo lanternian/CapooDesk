@@ -50,6 +50,13 @@ public partial class CapooView : SpineSprite
 	/// <summary>Hats, backs, props... that should also be clickable.</summary>
 	private readonly List<SpineSprite> accessories = new List<SpineSprite>();
 
+	/// <summary>The name of the skeleton behind the body and behind every part, used to
+	/// look up the clickable shapes of the artwork.</summary>
+	private string bodySkeleton;
+	private readonly Dictionary<SpineSprite, string> partSkeletons = new Dictionary<SpineSprite, string>();
+	private readonly Dictionary<SpineSprite, SlotCache> slotCaches = new Dictionary<SpineSprite, SlotCache>();
+	private readonly List<(SpineSprite sprite, string skeleton)> decorativeParts = new List<(SpineSprite, string)>();
+
 	public CapooView()
 	{
 	}
@@ -62,7 +69,18 @@ public partial class CapooView : SpineSprite
 	private void InitBody()
 	{
 		Name = "body";
-		SkeletonDataRes = GD.Load<SpineSkeletonDataResource>($"res://assets/spine/body/{capooInfo.body}.res");
+		string path = $"res://assets/spine/body/{capooInfo.body}.res";
+		SkeletonDataRes = GD.Load<SpineSkeletonDataResource>(path);
+		bodySkeleton = SkeletonName(path);
+	}
+
+	/// <summary>The name of the skeleton file behind a Spine resource.</summary>
+	private static string SkeletonName(string resPath)
+	{
+		int slash = resPath.LastIndexOf('/');
+		string file = slash >= 0 ? resPath.Substring(slash + 1) : resPath;
+		int dot = file.LastIndexOf('.');
+		return dot > 0 ? file.Substring(0, dot) : file;
 	}
 
 	private SpineSprite AttachComponent(string nodeName, string boneName, string resPath, string anim = "", bool behindBody = false)
@@ -100,10 +118,12 @@ public partial class CapooView : SpineSprite
 	private SpineSprite AttachPart(string nodeName, string boneName, string folder, string resName, string anim, bool behindBody = false)
 	{
 		if (string.IsNullOrEmpty(resName)) return null;
-		var sprite = AttachComponent(nodeName, boneName, $"res://assets/spine/{folder}/{resName}.res", anim, behindBody);
+		string path = $"res://assets/spine/{folder}/{resName}.res";
+		var sprite = AttachComponent(nodeName, boneName, path, anim, behindBody);
 		if (sprite != null)
 		{
 			characterParts.Add(sprite);
+			partSkeletons[sprite] = SkeletonName(path);
 			if (folder != "face") accessories.Add(sprite);
 		}
 		return sprite;
@@ -397,16 +417,100 @@ public partial class CapooView : SpineSprite
 	{
 		foreach (var part in accessories)
 		{
-			if (part.IsVisibleInTree() && GetGlobalBounds(part).HasPoint(world)) return true;
+			if (HitTestSprite(part, world, partSkeletons[part])) return true;
 		}
 		return false;
+	}
+
+	/// <summary>True if the point is on the character: the body, the face or an accessory.
+	/// Every attachment is checked against its own artwork, so the empty space around a
+	/// Capoo does not react to clicks.</summary>
+	public bool HitTest(Vector2 world)
+	{
+		if (!IsVisibleInTree()) return false;
+		if (HitTestSprite(this, world, bodySkeleton)) return true;
+		foreach (var part in characterParts)
+		{
+			if (HitTestSprite(part, world, partSkeletons[part])) return true;
+		}
+		return false;
+	}
+
+	/// <summary>Hides the effects (mood, sparkles) so a test can look at the character
+	/// alone. They are drawn above the Capoo, but they are not part of it.</summary>
+	public void SetDecorationsVisible(bool visible)
+	{
+		foreach (var (sprite, _) in decorativeParts) sprite.Visible = visible;
+	}
+
+	/// <summary>Checks one skeleton against the click. The shapes live in the space of the
+	/// skeleton, the same space the meshes are drawn in.</summary>
+	private bool HitTestSprite(SpineSprite sprite, Vector2 world, string skeletonName)
+	{
+		if (sprite == null || !sprite.IsVisibleInTree()) return false;
+		var shapes = HitShapes.For(skeletonName);
+		if (shapes == null || shapes.Count == 0) return false;
+
+		Vector2 local = sprite.GetGlobalTransform().AffineInverse() * world;
+		string[] names = SlotNames(sprite, shapes.Count);
+		for (int i = 0; i < shapes.Count; i++)
+		{
+			string name = names[i];
+			if (name == null) continue;
+			if (!shapes[i].TryGetValue(name, out var shape)) continue;
+			if (shape.Contains(local)) return true;
+		}
+		return false;
+	}
+
+	/// <summary>The attachment of every slot. Reading it from Spine creates an object for
+	/// every slot, so it is only done once per frame.</summary>
+	private string[] SlotNames(SpineSprite sprite, int count)
+	{
+		if (!slotCaches.TryGetValue(sprite, out var cache))
+		{
+			cache = new SlotCache();
+			slotCaches[sprite] = cache;
+		}
+		ulong frame = Engine.GetProcessFrames();
+		if (cache.Frame == frame && cache.Names != null && cache.Names.Length == count)
+		{
+			return cache.Names;
+		}
+		var names = new string[count];
+		var slots = sprite.GetSkeleton().GetSlots();
+		for (int i = 0; i < count && i < slots.Count; i++)
+		{
+			var attachment = slots[i].As<SpineSlot>()?.GetAttachment();
+			names[i] = attachment?.GetAttachmentName();
+		}
+		cache.Names = names;
+		cache.Frame = frame;
+		return names;
+	}
+
+	private class SlotCache
+	{
+		public ulong Frame;
+		public string[] Names;
+	}
+
+	/// <summary>Remembers a decorative overlay (mood, effect) so it counts as part of
+	/// the character when a click is checked.</summary>
+	private void AddDecorative(SpineSprite sprite, string resPath)
+	{
+		if (sprite == null) return;
+		decorativeParts.Add((sprite, SkeletonName(resPath)));
 	}
 
 	private static Rect2 GetGlobalBounds(SpineSprite sprite)
 	{
 		if (sprite == null) return new Rect2();
 		Rect2 local = sprite.GetSkeleton().GetBounds();
-		if (local.Size == Vector2.Zero) return new Rect2();
+		// A skeleton without any artwork has no bounds at all (Spine reports FLT_MAX).
+		if (local.Size.X <= 0 || local.Size.Y <= 0) return new Rect2();
+		if (!float.IsFinite(local.Position.X) || !float.IsFinite(local.Position.Y)) return new Rect2();
+		if (!float.IsFinite(local.Size.X) || !float.IsFinite(local.Size.Y)) return new Rect2();
 		var xf = sprite.GetGlobalTransform();
 		Vector2 a = xf * local.Position;
 		Vector2 b = xf * (local.Position + local.Size);
@@ -446,14 +550,20 @@ public partial class CapooView : SpineSprite
 		accBody = AttachPart("capoo_acc_body", "root", "capoo_acc_body", capooInfo.capoo_acc_body, capooInfo.capoo_acc_body_Anim);
 		accBot = AttachPart("capoo_acc_bot", "root", "capoo_acc_bot", capooInfo.capoo_acc_bot, capooInfo.capoo_acc_bot_Anim);
 
-		mood = AttachComponent("mood", "body_mood", $"res://assets/spine/mood/{capooInfo.mood}.res", capooInfo.mood_Anim);
+		string moodPath = $"res://assets/spine/mood/{capooInfo.mood}.res";
+		mood = AttachComponent("mood", "body_mood", moodPath, capooInfo.mood_Anim);
 		moodAnimationState = mood.GetAnimationState();
+		AddDecorative(mood, moodPath);
 
-		efxBot = AttachComponent("efx_bot", "root", $"res://assets/spine/efx_bot/{capooInfo.efx_bot}.res", capooInfo.efx_bot_Anim, behindBody: true);
+		string efxBotPath = $"res://assets/spine/efx_bot/{capooInfo.efx_bot}.res";
+		efxBot = AttachComponent("efx_bot", "root", efxBotPath, capooInfo.efx_bot_Anim, behindBody: true);
 		efxBotAnimationState = efxBot.GetAnimationState();
+		AddDecorative(efxBot, efxBotPath);
 
-		efxTop = AttachComponent("efx_top", "root", $"res://assets/spine/efx_top/{capooInfo.efx_top}.res", capooInfo.efx_top_Anim);
+		string efxTopPath = $"res://assets/spine/efx_top/{capooInfo.efx_top}.res";
+		efxTop = AttachComponent("efx_top", "root", efxTopPath, capooInfo.efx_top_Anim);
 		efxTopAnimationState = efxTop.GetAnimationState();
+		AddDecorative(efxTop, efxTopPath);
 
 		// The smoke is not attached to the body: it has to keep playing while the character
 		// itself is hidden, so the controller moves it next to the view instead.

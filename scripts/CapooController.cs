@@ -153,12 +153,11 @@ public partial class CapooController : CharacterBody2D
 
 	public bool HitTest(Vector2 world)
 	{
-		if (state == CapooState.Recycle || view == null) return false;
+		if (state is CapooState.Recycle or CapooState.Appear || view == null) return false;
 		Vector2 local = world - GlobalPosition;
 		// Cheap reject: accessories never reach further than ~one body size away.
-		if (Mathf.Abs(local.X) > BodySize.X * 1.2f || local.Y > BodySize.Y * 0.3f || local.Y < -BodySize.Y * 2.2f) return false;
-		if (FacingRight) local.X = -local.X;
-		return Geometry2D.IsPointInPolygon(local, pickPolygon) || view.AccessoryHitTest(world);
+		if (Mathf.Abs(local.X) > BodySize.X * 1.5f || local.Y > BodySize.Y * 0.4f || local.Y < -BodySize.Y * 2.4f) return false;
+		return view.HitTest(world);
 	}
 
 	public bool BubbleHitTest(Vector2 world)

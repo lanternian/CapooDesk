@@ -168,8 +168,16 @@ public partial class SelfTest : Node
 		Check("cleanup finishes", pooer.State == CapooState.Idle, pooer.State.ToString());
 
 		// Accessories are clickable too (C wears a duck hat).
-		Vector2 hatPoint = c.View.GetBoneGlobalPosition("hat") + new Vector2(0, -c.BodySize.Y * 0.25f);
-		Check("hats count as part of the Capoo", c.HitTest(hatPoint), hatPoint.ToString());
+		Vector2 hatBone = c.View.GetBoneGlobalPosition("hat");
+		bool hatHit = false;
+		for (int dx = -60; dx <= 60 && !hatHit; dx += 6)
+		{
+			for (int dy = -60; dy <= 40 && !hatHit; dy += 6)
+			{
+				if (c.View.AccessoryHitTest(hatBone + new Vector2(dx, dy))) hatHit = true;
+			}
+		}
+		Check("hats count as part of the Capoo", hatHit, hatBone.ToString());
 
 		GD.Print($"[selftest] perf: fps={Performance.GetMonitor(Performance.Monitor.TimeFps):0} process={Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:0.0}ms physics={Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:0.0}ms nodes={Performance.GetMonitor(Performance.Monitor.ObjectNodeCount):0}");
 
@@ -234,6 +242,9 @@ public partial class SelfTest : Node
 		book.HideBook();
 		Window.SetTestSize(fullSize);
 		await Wait(0.3);
+
+		// 14. The area around a Capoo that reacts to clicks.
+		await CheckHitArea();
 	}
 
 	/// <summary>Colours that identify the three layers of one Capoo: the blue body, the pink
@@ -268,6 +279,98 @@ public partial class SelfTest : Node
 			}
 		}
 		return count;
+	}
+
+	/// <summary>Measures how much of the area around a Capoo reacts to clicks although it is
+	/// empty space, and checks that clicks next to the Capoo fall through to the desktop.</summary>
+	private async Task CheckHitArea()
+	{
+		foreach (var p in Pets.Pets.ToArray())
+		{
+			Pets.RemovePet(p);
+			p.QueueFree();
+		}
+		await Wait(0.3);
+
+		int[] characters = { 0, 1, 7, 20, 40, 48, 60, 90 };
+		int worst = 0;
+		string worstName = "";
+		foreach (int index in characters)
+		{
+			float x = Window.Size.X * 0.3f;
+			var pet = Pets.SpawnPet(index, new Vector2(x, Window.Size.Y));
+			await Wait(1.5); // let it appear and settle
+			pet.View.SetAnimation("idle_idle1", force: true);
+			// The effects (sparkles, mood) hang above the Capoo, they are not part of it.
+			pet.View.SetDecorationsVisible(false);
+			await Wait(0.3);
+
+			await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+			var image = GetViewport().GetTexture().GetImage();
+
+			const int step = 2;
+			var area = new Rect2(x - 170, Window.Size.Y - 270, 340, 260);
+			int picture = 0;
+			int blank = 0;
+			var picBox = new Rect2();
+			var hitBox = new Rect2();
+			bool picSeen = false;
+			bool hitSeen = false;
+			for (int py = (int)area.Position.Y; py < area.End.Y; py += step)
+			{
+				for (int px = (int)area.Position.X; px < area.End.X; px += step)
+				{
+					var point = new Vector2(px, py);
+					bool drawn = image.GetPixel(px, py).A > 0.5f;
+					bool hit = pet.HitTest(point);
+					if (drawn)
+					{
+						picture++;
+						if (!picSeen) { picBox = new Rect2(point, Vector2.Zero); picSeen = true; }
+						picBox = picBox.Expand(point);
+					}
+					if (hit)
+					{
+						if (!hitSeen) { hitBox = new Rect2(point, Vector2.Zero); hitSeen = true; }
+						hitBox = hitBox.Expand(point);
+						if (!drawn) blank++;
+					}
+				}
+			}
+			int ratio = picture > 0 ? blank * 100 / picture : 100;
+			GD.Print($"[selftest] hit area {pet.DisplayName}: picture={picture * step * step}px2 " +
+				$"blank={blank * step * step}px2 ({ratio}%) pictureBox={picBox.Size} hitBox={hitBox.Size} " +
+				$"picPos={picBox.Position} hitPos={hitBox.Position} petPos={pet.GlobalPosition} win={Window.Size}");
+			if (ratio > worst)
+			{
+				worst = ratio;
+				worstName = pet.DisplayName;
+			}
+			// The box that reacts to clicks may not stick out much further than the Capoo.
+			float grow = Mathf.Max(Mathf.Abs(hitBox.Size.X - picBox.Size.X),
+				Mathf.Abs(hitBox.Size.Y - picBox.Size.Y));
+			// The default Capoo has to fit closely, the others may differ a little: their
+			// accessories move while the idle animation plays.
+			float allowed = index == 0 ? 10 : 16;
+			Check($"hit area {pet.DisplayName}: little empty space around it", ratio <= 10, $"{ratio}%");
+			Check($"hit area {pet.DisplayName}: the clickable box fits the Capoo", grow <= allowed, $"{grow:0}px");
+			if (index == 0)
+			{
+				// A click next to the Capoo has to reach the desktop.
+				var outside = new Vector2(picBox.Position.X - 15, picBox.GetCenter().Y);
+				Window.VirtualCursor = outside;
+				await Wait(0.2);
+				Check("hit area: a click next to the Capoo falls through", Window.IsClickThrough, outside.ToString());
+				var inside = picBox.GetCenter();
+				Window.VirtualCursor = inside;
+				await Wait(0.2);
+				Check("hit area: a click on the Capoo does not fall through", !Window.IsClickThrough, inside.ToString());
+			}
+			Pets.RemovePet(pet);
+			pet.QueueFree();
+			await Wait(0.3);
+		}
+		Check("hit area: no Capoo has a large dead zone", worst <= 10, $"{worstName} {worst}%");
 	}
 
 	/// <summary>Nothing on the book pages may overlap, and nothing may leave the paper.
