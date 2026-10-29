@@ -16,6 +16,7 @@ public partial class TrayIcon : Node
 		ToggleHidden,
 		ToggleTopmost,
 		ToggleDebug,
+		ToggleBookButton,
 		Quit = 99
 	}
 
@@ -159,6 +160,7 @@ public partial class TrayIcon : Node
 		Append(menu, Command.RecycleAll, "回收全部咖波");
 		Win32.AppendMenu(menu, Win32.MF_SEPARATOR, UIntPtr.Zero, null);
 		Append(menu, Command.ToggleHidden, "隐藏咖波");
+		Append(menu, Command.ToggleBookButton, "隐藏魔法书");
 		Append(menu, Command.ToggleTopmost, "总在最前");
 		Append(menu, Command.ToggleDebug, "调试信息");
 		Win32.AppendMenu(menu, Win32.MF_SEPARATOR, UIntPtr.Zero, null);

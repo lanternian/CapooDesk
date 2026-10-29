@@ -20,6 +20,7 @@ public partial class Main : Node2D
 		tray.IsChecked = command => command switch
 		{
 			TrayIcon.Command.ToggleHidden => Settings.PetsHidden,
+			TrayIcon.Command.ToggleBookButton => !Settings.ShowBookButton,
 			TrayIcon.Command.ToggleTopmost => Settings.AlwaysOnTop,
 			TrayIcon.Command.ToggleDebug => debug.Visible,
 			_ => false
@@ -62,6 +63,9 @@ public partial class Main : Node2D
 			case TrayIcon.Command.ToggleHidden:
 				AppSettings.Instance.Apply(s => s.PetsHidden = !s.PetsHidden);
 				break;
+			case TrayIcon.Command.ToggleBookButton:
+				ToggleBookButton();
+				break;
 			case TrayIcon.Command.ToggleTopmost:
 				AppSettings.Instance.Apply(s => s.AlwaysOnTop = !s.AlwaysOnTop);
 				break;
@@ -72,6 +76,14 @@ public partial class Main : Node2D
 				QuitApp();
 				break;
 		}
+	}
+
+	/// <summary>Tray "隐藏魔法书": hide (or bring back) the floating book button. The book
+	/// itself can still be opened from the tray while the button is hidden.</summary>
+	public void ToggleBookButton()
+	{
+		AppSettings.Instance.Apply(s => s.ShowBookButton = !s.ShowBookButton);
+		if (!Settings.ShowBookButton && book.IsBookOpen) book.HideBook();
 	}
 
 	public void QuitApp()
