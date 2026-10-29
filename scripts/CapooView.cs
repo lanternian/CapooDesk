@@ -367,9 +367,9 @@ public partial class CapooView : SpineSprite
 
 	public void SetFacing(bool right)
 	{
+		// The whole Capoo is mirrored, the bubble included: the original Unity version
+		// did the same, so the tail of the bubble points at the head in both directions.
 		Scale = new Vector2(right ? -petScale : petScale, petScale);
-		// Keep the bubble icons ("?", "!") readable when mirrored.
-		if (talk != null) talk.Scale = new Vector2(right ? -2.0f : 2.0f, 2.0f);
 		ApplyAppearScale();
 	}
 

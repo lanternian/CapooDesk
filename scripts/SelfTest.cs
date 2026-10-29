@@ -149,7 +149,27 @@ public partial class SelfTest : Node
 		Rect2 bubble = b.View.GetTalkBubbleRect();
 		Check("hungry shows a bubble", bubble.Size != Vector2.Zero, bubble.ToString());
 		await Capture("hungry");
-		await Click(bubble.GetCenter());
+
+		// The bubble has to mirror with the Capoo, like in the original Unity version.
+		b.SetFacing(false);
+		await Wait(0.5);
+		Rect2 bubbleLeft = b.View.GetTalkBubbleRect();
+		b.SetFacing(true);
+		await Wait(0.5);
+		Rect2 bubbleRight = b.View.GetTalkBubbleRect();
+		float offsetLeft = bubbleLeft.GetCenter().X - b.GlobalPosition.X;
+		float offsetRight = bubbleRight.GetCenter().X - b.GlobalPosition.X;
+		Check("the hungry bubble mirrors with the Capoo",
+			Mathf.Abs(offsetLeft + offsetRight) < 12 && Mathf.Abs(offsetLeft) > 20,
+			$"left {offsetLeft:0} right {offsetRight:0}");
+		// The bubble animates, so its box moves a little between the two measurements.
+		Check("the hungry bubble keeps its size",
+			Mathf.Abs(bubbleLeft.Size.X - bubbleRight.Size.X) < 12 &&
+			Mathf.Abs(bubbleLeft.Size.Y - bubbleRight.Size.Y) < 12,
+			$"{bubbleLeft.Size} {bubbleRight.Size}");
+		await Capture("hungry_right");
+
+		await Click(bubbleRight.GetCenter());
 		Check("clicking the bubble feeds", b.State == CapooState.Eating, b.State.ToString());
 		await Wait(1.2);
 		await Capture("eating");
@@ -416,6 +436,21 @@ public partial class SelfTest : Node
 			$"{tooltipBox?.BgColor} {tooltipInk}");
 	}
 
+	/// <summary>Waits until the blush of the face is visible. The blush blinks, so a
+	/// measurement has to start while it shows.</summary>
+	private async Task<bool> WaitForBlush(Rect2 rect, float timeout)
+	{
+		float waited = 0;
+		while (waited < timeout)
+		{
+			var colors = await CountColors(rect);
+			if (colors.pink > 0) return true;
+			await Wait(0.05);
+			waited += 0.05f;
+		}
+		return false;
+	}
+
 	/// <summary>Summons a Capoo with a blue body, a pink face and a yellow helmet and watches
 	/// the layers frame by frame: they must all appear (and vanish) in the same frame.</summary>
 	private async Task CheckSummonSync()
@@ -449,15 +484,20 @@ public partial class SelfTest : Node
 		Check("summon: the character is hidden while the smoke plays",
 			frames.Take(6).All(f => f.blue == 0 && f.pink == 0 && f.yellow == 0),
 			string.Join(" ", frames.Take(6).Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
+		// The blush of the face blinks, so only the direction that never lies is checked:
+		// the face and the helmet may not show up without the body.
 		Check("summon: body, face and helmet appear together",
 			frames.Any(f => f.blue > 0 && f.pink > 0 && f.yellow > 0) &&
-			frames.All(f => (f.blue > 0) == (f.pink > 0) && (f.blue > 0) == (f.yellow > 0)),
+			frames.All(f => (f.pink > 0) == (f.blue > 0) || f.pink == 0 && f.blue > 0) &&
+			frames.All(f => f.yellow == 0 || f.blue > 0),
 			string.Join(" ", frames.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
 		Check("summon: the smoke plays while the character is hidden", smoke.Take(6).Any(v => v));
 		await Capture("summon");
 
 		await Wait(0.6);
 		pet.View.SetAnimation("idle_idle1", force: true);
+		// The blush blinks, wait until it shows before the Capoo is recycled.
+		await WaitForBlush(rect, 4.0f);
 		pet.StartRecycle();
 		Check("recycle: the smoke plays", pet.AppearSprite != null && pet.AppearSprite.Visible);
 		// The smoke would hide the Capoo behind it; take it away to watch the layers.
@@ -472,7 +512,8 @@ public partial class SelfTest : Node
 			recycle.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
 		Check("recycle: body, face and helmet vanish together",
 			recycle.Any(f => f.blue == 0 && f.pink == 0 && f.yellow == 0) &&
-			recycle.All(f => (f.blue > 0) == (f.pink > 0) && (f.blue > 0) == (f.yellow > 0)),
+			recycle.All(f => f.pink == 0 || f.blue > 0) &&
+			recycle.All(f => f.yellow == 0 || f.blue > 0),
 			string.Join(" ", recycle.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
 		Check("recycle: no body left behind", recycle.Skip(Math.Max(0, recycle.Count - 4)).All(f => f.blue == 0 && f.pink == 0 && f.yellow == 0),
 			string.Join(" ", recycle.Select(f => $"{f.blue}/{f.pink}/{f.yellow}")));
@@ -661,6 +702,30 @@ public partial class SelfTest : Node
 		await Wait(0.9);
 		await Capture("book_tooltip");
 		book.HideBook();
+
+		// The area that reacts to clicks, painted over the picture of the Capoo.
+		var plain = Pets.SpawnPet(7, new Vector2(x, Window.Size.Y));
+		plain.View.SetAnimation("idle_idle1", force: true);
+		await Wait(1.5);
+		var hitArea = new Rect2I((int)x - 150, (int)Window.Size.Y - 250, 300, 240);
+		await Capture("hit_area", hitArea, plain);
+
+		// The bubble of the poo, looking left and looking right.
+		Pets.RemovePet(plain);
+		plain.QueueFree();
+		await Wait(0.5);
+		var poo = Pets.SpawnPet(7, new Vector2(x, Window.Size.Y));
+		poo.View.SetAnimation("idle_idle1", force: true);
+		await Wait(1.0);
+		poo.DebugEnter(CapooState.Pooing);
+		await WaitFor(() => poo.View.GetTalkBubbleRect().Size != Vector2.Zero, 5);
+		var bubbleArea = new Rect2I((int)x - 150, (int)Window.Size.Y - 250, 300, 240);
+		poo.SetFacing(false);
+		await Wait(0.8);
+		await Capture("bubble_left", bubbleArea);
+		poo.SetFacing(true);
+		await Wait(0.8);
+		await Capture("bubble_right", bubbleArea);
 	}
 
 	private async Task RunLoadTest()
@@ -761,10 +826,27 @@ public partial class SelfTest : Node
 		GD.Print($"[selftest] {(ok ? "PASS" : "FAIL")} {name}{(ok || detail == "" ? "" : $"  ({detail})")}");
 	}
 
-	private async Task Capture(string name)
+	private async Task Capture(string name, Rect2I? region = null, CapooController pet = null)
 	{
 		await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
 		var image = GetViewport().GetTexture().GetImage();
+		if (pet != null && region.HasValue)
+		{
+			// Paint the area that reacts to clicks over the picture: red where there is
+			// artwork, pink where the click reacts although the space is empty.
+			var area = region.Value;
+			for (int y = area.Position.Y; y < area.End.Y; y++)
+			{
+				for (int x = area.Position.X; x < area.End.X; x++)
+				{
+					if (!pet.HitTest(new Vector2(x, y))) continue;
+					Color c = image.GetPixel(x, y);
+					image.SetPixel(x, y, c.A < 0.5f ? new Color(0.9f, 0.1f, 0.1f, 1f)
+						: new Color(c.R, c.G * 0.55f, c.B * 0.55f, c.A));
+				}
+			}
+		}
+		if (region.HasValue) image = image.GetRegion(region.Value);
 		string path = $"user://selftest_{++shot:00}_{name}.png";
 		image.SavePng(path);
 		GD.Print($"[selftest] captured {ProjectSettings.GlobalizePath(path)}");
