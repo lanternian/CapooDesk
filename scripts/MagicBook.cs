@@ -204,7 +204,10 @@ public partial class MagicBook : CanvasLayer
 	{
 		Vector2 size = bookButton.Size * bookButton.Scale;
 		Vector2 screen = DesktopWindow.Instance.Size;
-		return new Vector2(Mathf.Clamp(position.X, 0, screen.X - size.X), Mathf.Clamp(position.Y, 0, screen.Y - size.Y));
+		// On a screen that is smaller than the button there is nothing to clamp to.
+		float maxX = Mathf.Max(0, screen.X - size.X);
+		float maxY = Mathf.Max(0, screen.Y - size.Y);
+		return new Vector2(Mathf.Clamp(position.X, 0, maxX), Mathf.Clamp(position.Y, 0, maxY));
 	}
 
 	private void LayoutForScreen()
