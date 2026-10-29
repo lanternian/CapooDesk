@@ -17,6 +17,8 @@ config/custom_user_dir_name="CapooDesk"
 config/features=PackedStringArray("4.2", "C#", "GL Compatibility")
 config/icon="res://icon.svg"
 config/windows_native_icon="res://assets/icons/capoo.ico"
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0, 0, 0, 0)
 
 [autoload]
 

@@ -63,6 +63,11 @@ public partial class DesktopWindow : Node
 	public override void _EnterTree()
 	{
 		Instance = this;
+
+		// The window of the engine is visible for a moment before the app sets it up.
+		// Hide it right away, so the desktop only shows the Capoos.
+		Hwnd = new IntPtr(DisplayServer.WindowGetNativeHandle(DisplayServer.HandleType.WindowHandle));
+		if (Hwnd != IntPtr.Zero) Win32.ShowWindow(Hwnd, Win32.SW_HIDE);
 	}
 
 	public override void _Ready()
@@ -75,7 +80,6 @@ public partial class DesktopWindow : Node
 			return;
 		}
 
-		Hwnd = new IntPtr(DisplayServer.WindowGetNativeHandle(DisplayServer.HandleType.WindowHandle));
 		Mode = ResolveMode();
 
 		ApplyTransparency();
@@ -83,6 +87,7 @@ public partial class DesktopWindow : Node
 		ApplyStyles(hideFromTaskbar: true);
 		SetClickThrough(true);
 		ApplyFrameRate();
+		UpdateVisibility();
 
 		AppSettings.Instance.Changed += OnSettingsChanged;
 		GD.Print($"DesktopWindow: mode={Mode} origin={Origin} size={Size}");
@@ -160,7 +165,6 @@ public partial class DesktopWindow : Node
 	public void UpdateVisibility()
 	{
 		bool hidden = testHidden || autoHidden || AppSettings.Instance.Data.PetsHidden;
-		if (hidden == windowHidden) return;
 		windowHidden = hidden;
 		Win32.ShowWindow(Hwnd, hidden ? Win32.SW_HIDE : Win32.SW_SHOWNOACTIVATE);
 		if (!hidden) ApplyTopmost();
