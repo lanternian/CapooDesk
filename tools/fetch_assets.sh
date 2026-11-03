@@ -6,5 +6,6 @@ set -e
 cd "$(git rev-parse --show-toplevel)"
 remote="${1:-origin}"
 git fetch "$remote" assets
-git archive FETCH_HEAD assets | tar -x
+# autocrlf off: extract the files byte for byte as stored (LF), like a normal checkout here
+git -c core.autocrlf=false archive FETCH_HEAD assets | tar -x
 echo "Assets extracted from $remote/assets. Open the project once in the Godot editor to import them."
