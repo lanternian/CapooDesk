@@ -1,0 +1,14 @@
+[remap]
+
+importer="spine.json"
+type="SpineSkeletonFileResource"
+uid="uid://bweotd7s05us"
+path="res://.godot/imported/efx_mouse_01.spine-json-64bf86f1e65d3eceddaec5639d8c4019.spjson"
+
+[deps]
+
+source_file="res://assets/spine/efx_mouse_01/efx_mouse_01.spine-json"
+dest_files=["res://.godot/imported/efx_mouse_01.spine-json-64bf86f1e65d3eceddaec5639d8c4019.spjson"]
+
+[params]
+

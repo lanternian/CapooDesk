@@ -1,0 +1,15 @@
+[remap]
+
+importer="spine.atlas"
+type="SpineAtlasResource"
+uid="uid://d4miahuyjdqap"
+path="res://.godot/imported/efx_mouse_01.atlas-3eb5d255de0774f5a057c55f25ccdeab.spatlas"
+
+[deps]
+
+source_file="res://assets/spine/efx_mouse_01/efx_mouse_01.atlas"
+dest_files=["res://.godot/imported/efx_mouse_01.atlas-3eb5d255de0774f5a057c55f25ccdeab.spatlas"]
+
+[params]
+
+normal_map_prefix="n"

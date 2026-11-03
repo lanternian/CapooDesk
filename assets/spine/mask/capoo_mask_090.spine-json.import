@@ -1,0 +1,14 @@
+[remap]
+
+importer="spine.json"
+type="SpineSkeletonFileResource"
+uid="uid://dbvi5qxpfbrq3"
+path="res://.godot/imported/capoo_mask_090.spine-json-0a6d64fcb24c9f4d7b2bd297688125d5.spjson"
+
+[deps]
+
+source_file="res://assets/spine/mask/capoo_mask_090.spine-json"
+dest_files=["res://.godot/imported/capoo_mask_090.spine-json-0a6d64fcb24c9f4d7b2bd297688125d5.spjson"]
+
+[params]
+

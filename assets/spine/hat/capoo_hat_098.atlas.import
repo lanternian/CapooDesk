@@ -1,0 +1,15 @@
+[remap]
+
+importer="spine.atlas"
+type="SpineAtlasResource"
+uid="uid://dh1jyxg7y4h7r"
+path="res://.godot/imported/capoo_hat_098.atlas-4c2332989e8eb57b1d411125b72231fa.spatlas"
+
+[deps]
+
+source_file="res://assets/spine/hat/capoo_hat_098.atlas"
+dest_files=["res://.godot/imported/capoo_hat_098.atlas-4c2332989e8eb57b1d411125b72231fa.spatlas"]
+
+[params]
+
+normal_map_prefix="n"

@@ -1,0 +1,15 @@
+[remap]
+
+importer="spine.atlas"
+type="SpineAtlasResource"
+uid="uid://1128q5kanytk"
+path="res://.godot/imported/exf_emblem_get_01.atlas-3351366ac1a4e2823da5ef038abec1fd.spatlas"
+
+[deps]
+
+source_file="res://assets/spine/exf_emblem_get_01/exf_emblem_get_01.atlas"
+dest_files=["res://.godot/imported/exf_emblem_get_01.atlas-3351366ac1a4e2823da5ef038abec1fd.spatlas"]
+
+[params]
+
+normal_map_prefix="n"

@@ -1,0 +1,15 @@
+[remap]
+
+importer="spine.atlas"
+type="SpineAtlasResource"
+uid="uid://dqtadfst6rdes"
+path="res://.godot/imported/capoo_acc_bot_105.atlas-1842b500157952ae02903f4b80dd554c.spatlas"
+
+[deps]
+
+source_file="res://assets/spine/capoo_acc_bot/capoo_acc_bot_105.atlas"
+dest_files=["res://.godot/imported/capoo_acc_bot_105.atlas-1842b500157952ae02903f4b80dd554c.spatlas"]
+
+[params]
+
+normal_map_prefix="n"

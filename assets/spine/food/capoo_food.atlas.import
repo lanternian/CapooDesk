@@ -1,0 +1,15 @@
+[remap]
+
+importer="spine.atlas"
+type="SpineAtlasResource"
+uid="uid://4ty0o7ken1pf"
+path="res://.godot/imported/capoo_food.atlas-ed1090d69952df2a10acfb2bc9c91e1e.spatlas"
+
+[deps]
+
+source_file="res://assets/spine/food/capoo_food.atlas"
+dest_files=["res://.godot/imported/capoo_food.atlas-ed1090d69952df2a10acfb2bc9c91e1e.spatlas"]
+
+[params]
+
+normal_map_prefix="n"

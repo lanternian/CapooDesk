@@ -1,0 +1,15 @@
+[remap]
+
+importer="spine.atlas"
+type="SpineAtlasResource"
+uid="uid://cfu0dh2ic8pt2"
+path="res://.godot/imported/capoo_prop_061.atlas-64464f4c5fe1f9270393c0e59ee89d28.spatlas"
+
+[deps]
+
+source_file="res://assets/spine/prop_r/capoo_prop_061.atlas"
+dest_files=["res://.godot/imported/capoo_prop_061.atlas-64464f4c5fe1f9270393c0e59ee89d28.spatlas"]
+
+[params]
+
+normal_map_prefix="n"

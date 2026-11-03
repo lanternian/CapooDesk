@@ -1,0 +1,15 @@
+[remap]
+
+importer="spine.atlas"
+type="SpineAtlasResource"
+uid="uid://er85al4pwh3l"
+path="res://.godot/imported/char_talk.atlas-6fba6e11fef8e7b367c40fd3029c3578.spatlas"
+
+[deps]
+
+source_file="res://assets/spine/char_talk/char_talk.atlas"
+dest_files=["res://.godot/imported/char_talk.atlas-6fba6e11fef8e7b367c40fd3029c3578.spatlas"]
+
+[params]
+
+normal_map_prefix="n"

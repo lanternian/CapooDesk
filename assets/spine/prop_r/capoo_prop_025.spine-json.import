@@ -1,0 +1,14 @@
+[remap]
+
+importer="spine.json"
+type="SpineSkeletonFileResource"
+uid="uid://bkxb7vqnjpqfe"
+path="res://.godot/imported/capoo_prop_025.spine-json-303ea1a2ae6784eb36d2b5a28979dbd0.spjson"
+
+[deps]
+
+source_file="res://assets/spine/prop_r/capoo_prop_025.spine-json"
+dest_files=["res://.godot/imported/capoo_prop_025.spine-json-303ea1a2ae6784eb36d2b5a28979dbd0.spjson"]
+
+[params]
+

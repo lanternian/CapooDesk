@@ -1,0 +1,15 @@
+[remap]
+
+importer="spine.atlas"
+type="SpineAtlasResource"
+uid="uid://dgoj0y4gjrpow"
+path="res://.godot/imported/capoo_clothes_074.atlas-6a68902d5747e4dea1e257d8bdd6087b.spatlas"
+
+[deps]
+
+source_file="res://assets/spine/clothes/capoo_clothes_074.atlas"
+dest_files=["res://.godot/imported/capoo_clothes_074.atlas-6a68902d5747e4dea1e257d8bdd6087b.spatlas"]
+
+[params]
+
+normal_map_prefix="n"

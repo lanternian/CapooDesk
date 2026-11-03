@@ -1,0 +1,14 @@
+[remap]
+
+importer="spine.json"
+type="SpineSkeletonFileResource"
+uid="uid://y7ylrui75x8j"
+path="res://.godot/imported/char_talk.spine-json-3f335575046f0eb70fe7e9c10ad8f788.spjson"
+
+[deps]
+
+source_file="res://assets/spine/char_talk/char_talk.spine-json"
+dest_files=["res://.godot/imported/char_talk.spine-json-3f335575046f0eb70fe7e9c10ad8f788.spjson"]
+
+[params]
+

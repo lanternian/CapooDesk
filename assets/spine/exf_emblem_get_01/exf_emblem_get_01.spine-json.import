@@ -1,0 +1,14 @@
+[remap]
+
+importer="spine.json"
+type="SpineSkeletonFileResource"
+uid="uid://b0cxjfvas64fn"
+path="res://.godot/imported/exf_emblem_get_01.spine-json-073acf8a83fa930dc5380e55f91c7f81.spjson"
+
+[deps]
+
+source_file="res://assets/spine/exf_emblem_get_01/exf_emblem_get_01.spine-json"
+dest_files=["res://.godot/imported/exf_emblem_get_01.spine-json-073acf8a83fa930dc5380e55f91c7f81.spjson"]
+
+[params]
+
