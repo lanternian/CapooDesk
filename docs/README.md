@@ -23,19 +23,19 @@ CapooDesk（咖波桌宠）是仿照官方 Capoo Pals 做的桌面宠物。和�
 ## 目录结构
 
 ```
-capoo/
+CapooDesk/
   scenes/main.tscn        主场景
   scripts/                全部 C# 代码（见 架构.md）
-  assets/
-    json/                 角色表、动作表、参数表
+  assets/                 官方素材在 assets 分支，克隆后运行 sh tools/fetch_assets.sh 取回
+    json/                 角色表、动作表、参数表（main 只跟踪自己的 Capoo_Action_Extra.json）
     spine/                Spine 骨架（.spine-json + .atlas + .png + 生成的 .res）
     images/               界面图片（来自原版）
     sounds/               音效（来自原版）
     icons/                程序与托盘图标
     data/hit_shapes.bin   点击形状（由 tools/gen_hit_shapes.py 生成）
   tools/gen_hit_shapes.py 生成点击形状的脚本
+  tools/fetch_assets.sh   从 assets 分支取回素材
   docs/                   本文档
   README.md               简要说明
-  CLAUDE.md               给 Claude 的项目说明
   .claude/skills/         给 Claude 的专题笔记（Spine、物理、行为、测试、C# 约定）
 ```

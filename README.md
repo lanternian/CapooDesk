@@ -35,11 +35,16 @@
 
 需要带 spine-godot 4.1 模块的 Godot 4.2.1 mono 编辑器（`D:\app\Godot\godot-editor-windows-mono\godot4.exe`）。
 
+官方素材不在 `main` 分支里，而是单独放在 `assets` 分支。克隆后先取回素材，再打开一次 Godot 编辑器让它导入：
+
 ```bash
+sh tools/fetch_assets.sh                          # 把 assets 分支的 assets/ 解压到工作区（已被 .gitignore 忽略）
 dotnet build
 godot4 --path .                                   # 运行
 godot4 --path . -- --test --selftest              # 自动化交互测试（不会动真实鼠标）
 godot4 --headless --path . --export-release "CapooDesk" ../build/CapooDesk/CapooDesk.exe
 ```
 
-素材（Spine 动画、UI 图片、音效）来自官方 CapooPals，仅供个人学习使用。
+素材（Spine 动画、UI 图片、音效、角色和动作数据）来自官方 CapooPals，版权归原权利人所有，仅供个人学习使用，请勿商用或再分发。
+
+详细文档见 [docs/](docs/README.md)。

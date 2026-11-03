@@ -15,12 +15,12 @@ dotnet build    # must be 0 errors, 0 warnings
 
 ## L2: scripted self-tests (SelfTest.cs, virtual cursor — never moves the real mouse)
 ```bash
-godot4 --path D:/program/Godot/capoo -- --test --selftest     # click-through, hit, petting, drag/throw, stacking, bump,
+godot4 --path D:/playground/CapooDesk -- --test --selftest     # click-through, hit, petting, drag/throw, stacking, bump,
                                                               # hungry/eat, poo/clean, nap/wake, accessory hit-test,
                                                               # book UI captures, away->sleep->wake, recycle
-godot4 --path D:/program/Godot/capoo -- --test --windowtest   # needs a top-level window titled "CapooTestWindow":
+godot4 --path D:/playground/CapooDesk -- --test --windowtest   # needs a top-level window titled "CapooTestWindow":
                                                               # platform detection, landing, edge walk, carry, fall on close
-godot4 --path D:/program/Godot/capoo -- --test --perftest     # CPU % of one core for 0/1/5/10/20 pets
+godot4 --path D:/playground/CapooDesk -- --test --perftest     # CPU % of one core for 0/1/5/10/20 pets
 ```
 - Output lines `[selftest] PASS|FAIL ...`, summary `[selftest] done: N passed, M failed`; exit code 1 on failure.
 - Captures: `%APPDATA%/CapooDesk/selftest_NN_<name>.png` (the viewport only, not the user's screen).
@@ -34,7 +34,7 @@ measure real CPU with `Process.TotalProcessorTime` (see SelfTest.RunPerf).
 
 ## L3: exported build
 ```bash
-godot4 --headless --path D:/program/Godot/capoo --export-release "CapooDesk" D:/program/Godot/build/CapooDesk/CapooDesk.exe
+godot4 --headless --path D:/playground/CapooDesk --export-release "CapooDesk" D:/program/Godot/build/CapooDesk/CapooDesk.exe
 D:/program/Godot/build/CapooDesk/CapooDesk.exe -- --test --selftest
 ```
 New asset files (sounds, images) must be imported before running from the CLI; `--export-pack "CapooDesk" <tmp>.pck`

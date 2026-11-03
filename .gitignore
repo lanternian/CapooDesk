@@ -4,3 +4,16 @@
 # Python cache of the tools
 __pycache__/
 *.pyc
+
+# Official CapooPals assets live on the `assets` branch (sh tools/fetch_assets.sh)
+/assets/spine/
+/assets/images/
+/assets/sounds/
+/assets/icons/
+/assets/data/
+/assets/json/Capoo_Info.json
+/assets/json/Capoo_Action.json
+/assets/json/Game_Parameter.json
+
+# Local notes for Claude Code, not published
+/CLAUDE.md
