@@ -36,7 +36,8 @@ CapooDesk/
   tools/gen_hit_shapes.py 生成点击形状的脚本
   tools/fetch_assets.sh   从 assets 分支取回素材
   tools/make_ico.py       生成多尺寸程序图标
-  docs/                   本文档
+  docs/                   本文档（.gdignore：Godot 不导入）
+    media/                README 用的演示视频、动图和截图
   README.md               简要说明
   .claude/skills/         给 Claude 的专题笔记（Spine、物理、行为、测试、C# 约定）
 ```
