@@ -12,7 +12,7 @@ Bugcat Capoo desktop pet for Windows · 126 Capoos, all unlocked · no gacha, no
 ![Spine 4.1](https://img.shields.io/badge/Spine-4.1-FF4000)
 [![GitHub stars](https://img.shields.io/github/stars/lanternian/CapooDesk?style=social)](https://github.com/lanternian/CapooDesk/stargazers)
 
-<a href="docs/media/demo.mp4"><img src="docs/media/hero.gif" width="720" alt="CapooDesk 演示：甩出去、叠罗汉、拖动窗口时站在上面的咖波跟着走"></a>
+<a href="docs/media/demo.mp4"><img src="docs/media/hero.gif" width="640" alt="CapooDesk 演示：甩出去、叠罗汉、拖动窗口时站在上面的咖波跟着走"></a>
 
 ▶️ [完整演示视频（1 分钟）](docs/media/demo.mp4) &nbsp;·&nbsp; ⬇️ [下载 Windows 版](https://github.com/lanternian/CapooDesk/releases/latest) &nbsp;·&nbsp; ⭐ 喜欢的话点个 Star
 
